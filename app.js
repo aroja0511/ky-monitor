@@ -74,6 +74,7 @@ console.log(`Found ${fraudRequests.length} new fraud requests`);
 }
 
 console.log("Keynua monitor scheduler started");
+runMonitor();
 
 
 cron.schedule("*/3 7-9 * * 1-5", async () => {
