@@ -3,6 +3,7 @@ require("dotenv").config();
 const cron = require("node-cron");
 
 const { getBrowser, getContext } = require("./src/services/browser");
+const ensureLoggedIn = require("./src/services/auth");
 
 const monitorLiveness = require("./src/monitors/liveness");
 const monitorTranscribe = require("./src/monitors/transcribe");
@@ -31,6 +32,12 @@ async function runMonitor() {
   try {
     const context = await getContext(browser);
     const page = await context.newPage();
+    
+    await page.goto("https://admin.keynua.com/liveness-detection-approval/", {
+  		waitUntil: "networkidle"
+	});
+
+	await ensureLoggedIn(page, context);
 
     const livenessRequests = await monitorLiveness(page);
 
