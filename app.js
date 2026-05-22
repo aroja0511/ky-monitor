@@ -11,7 +11,20 @@ const monitorFraud = require("./src/monitors/fraud");
 const sendPushover = require("./src/services/pushover");
 
 async function runMonitor() {
+
   console.log("Running Keynua monitor...");
+
+  const now = new Date().toLocaleString("en-GB", {
+
+    timeZone: "Europe/Madrid"
+
+  });
+
+  console.log(`\n==========`);
+
+  console.log(`Check started: ${now} CET`);
+
+  console.log(`==========`);
 
   const browser = await getBrowser();
 
