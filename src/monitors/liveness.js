@@ -21,7 +21,7 @@ async function monitorLiveness(page) {
   const pageText = await page.locator("body").innerText();
 
   const itemIdMatches = pageText.match(
-    /[a-f0-9-]{36}:item:\d+:\d+/gi
+    /[a-f0-9-]+:item:\d+:\d+/gi
   ) || [];
 
   const dateMatches = pageText.match(
