@@ -1,5 +1,8 @@
 require("dotenv").config();
 
+const fs = require("fs");
+fs.mkdirSync("logs", { recursive: true });
+
 const cron = require("node-cron");
 
 const { getBrowser, getContext } = require("./src/services/browser");
@@ -12,32 +15,28 @@ const monitorFraud = require("./src/monitors/fraud");
 const sendPushover = require("./src/services/pushover");
 
 async function runMonitor() {
-
   console.log("Running Keynua monitor...");
 
   const now = new Date().toLocaleString("en-GB", {
-
     timeZone: "Europe/Madrid"
-
   });
 
   console.log(`\n==========`);
-
   console.log(`Check started: ${now} CET`);
-
   console.log(`==========`);
 
   const browser = await getBrowser();
+  let page;
 
   try {
     const context = await getContext(browser);
-    const page = await context.newPage();
-    
-    await page.goto("https://admin.keynua.com/liveness-detection-approval/", {
-  		waitUntil: "networkidle"
-	});
+    page = await context.newPage();
 
-	await ensureLoggedIn(page, context);
+    await page.goto("https://admin.keynua.com/liveness-detection-approval/", {
+      waitUntil: "networkidle"
+    });
+
+    await ensureLoggedIn(page, context);
 
     const livenessRequests = await monitorLiveness(page);
 
@@ -66,23 +65,33 @@ ${request.itemId}`
     }
 
     console.log(`Found ${transcribeRequests.length} new transcribe requests`);
-    
+
     const fraudRequests = await monitorFraud(page);
 
-for (const request of fraudRequests) {
-  await sendPushover(
-    "🚨 New Fraud Detection Request",
-    `Created: ${request.createdAt}
+    for (const request of fraudRequests) {
+      await sendPushover(
+        "🚨 New Fraud Detection Request",
+        `Created: ${request.createdAt}
 
 Request ID:
 ${request.itemId}`
-  );
-}
+      );
+    }
 
-console.log(`Found ${fraudRequests.length} new fraud requests`);
-
+    console.log(`Found ${fraudRequests.length} new fraud requests`);
   } catch (error) {
     console.error("Monitor error:", error);
+
+    if (page) {
+      try {
+        await page.screenshot({
+          path: `logs/error-${Date.now()}.png`,
+          fullPage: true
+        });
+      } catch (screenshotError) {
+        console.error("Failed to capture screenshot:", screenshotError.message);
+      }
+    }
 
     await sendPushover(
       "⚠️ Keynua Monitor Error",
@@ -93,9 +102,21 @@ console.log(`Found ${fraudRequests.length} new fraud requests`);
   }
 }
 
+async function sendHeartbeat() {
+  const now = new Date().toLocaleString("en-GB", {
+    timeZone: "Europe/Madrid"
+  });
+
+  await sendPushover(
+    "✅ Keynua Monitor Heartbeat",
+    `Monitor is running.
+
+Time: ${now} CET`
+  );
+}
+
 console.log("Keynua monitor scheduler started");
 runMonitor();
-
 
 cron.schedule("*/3 7-9 * * 1-5", async () => {
   const now = new Date();
@@ -115,4 +136,8 @@ cron.schedule("*/3 12-16 * * 1-5", async () => {
   if (hour === 16 && minutes > 5) return;
 
   await runMonitor();
+});
+
+cron.schedule("0 7 * * 1-5", async () => {
+  await sendHeartbeat();
 });

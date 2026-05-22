@@ -1,4 +1,5 @@
 const fs = require("fs");
+const path = require("path");
 
 const SEEN_FILE = "state/fraud.json";
 
@@ -8,6 +9,8 @@ function loadSeen() {
 }
 
 function saveSeen(data) {
+  fs.mkdirSync(path.dirname(SEEN_FILE), { recursive: true });
+
   fs.writeFileSync(SEEN_FILE, JSON.stringify(data, null, 2));
 }
 

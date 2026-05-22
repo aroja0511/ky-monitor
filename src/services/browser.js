@@ -11,7 +11,13 @@ async function getBrowser() {
 
 async function getContext(browser) {
   try {
-    return await browser.newContext({ storageState: SESSION_FILE });
+    return await browser.newContext({
+		storageState: SESSION_FILE,
+ 		viewport: {
+    		width: 1920,
+    		height: 1080
+    	}
+    });
   } catch {
     return await browser.newContext();
   }

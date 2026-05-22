@@ -1,4 +1,5 @@
 const fs = require("fs");
+const path = require("path");
 
 const SEEN_FILE = "state/liveness.json";
 
@@ -8,6 +9,8 @@ function loadSeen() {
 }
 
 function saveSeen(data) {
+  fs.mkdirSync(path.dirname(SEEN_FILE), { recursive: true });
+
   fs.writeFileSync(SEEN_FILE, JSON.stringify(data, null, 2));
 }
 
@@ -20,9 +23,9 @@ async function monitorLiveness(page) {
 
   const pageText = await page.locator("body").innerText();
   
-  	console.log("Liveness URL:", page.url());
+/*   	console.log("Liveness URL:", page.url());
 	console.log("Liveness text preview:");
-	console.log(pageText.slice(0, 2000));
+	console.log(pageText.slice(0, 2000)); */
 
   const itemIdMatches = pageText.match(
     /[a-f0-9-]+:item:\d+:\d+/gi
