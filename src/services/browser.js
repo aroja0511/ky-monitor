@@ -4,7 +4,7 @@ const SESSION_FILE = "sessions/keynua-session.json";
 
 async function getBrowser() {
   return await chromium.launch({
-    headless: false,
+    headless: true,
     args: ["--no-sandbox"]
   });
 }
