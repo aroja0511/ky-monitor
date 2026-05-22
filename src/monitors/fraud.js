@@ -21,7 +21,7 @@ async function monitorFraud(page) {
   const pageText = await page.locator("body").innerText();
 
   const itemIdMatches = pageText.match(
-    /([a-f0-9-]+:item:\d+:\d+)|([a-f0-9-]+:\d+:\d+:\d+)/gi
+    /[a-f0-9-]+(?::item)?:\d+:\d+/gi
   ) || [];
 
   const dateMatches = pageText.match(
