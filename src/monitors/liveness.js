@@ -16,9 +16,13 @@ async function monitorLiveness(page) {
     waitUntil: "networkidle"
   });
 
-  await page.waitForTimeout(3000);
+  await page.waitForTimeout(7000);
 
   const pageText = await page.locator("body").innerText();
+  
+  	console.log("Liveness URL:", page.url());
+	console.log("Liveness text preview:");
+	console.log(pageText.slice(0, 2000));
 
   const itemIdMatches = pageText.match(
     /[a-f0-9-]+:item:\d+:\d+/gi
