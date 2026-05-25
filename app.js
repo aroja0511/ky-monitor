@@ -129,27 +129,25 @@ Time: ${now} CET`
 console.log("Keynua monitor scheduler started");
 //runMonitor();
 
-cron.schedule("*/3 7-9 * * 1-5", async () => {
-  const now = new Date();
-  const hour = now.getHours();
-  const minutes = now.getMinutes();
-
-  // Stop after 09:05
-  if (hour === 9 && minutes > 5) return;
-
+cron.schedule("*/3 7-8 * * 1-5", async () => {
   await runMonitor();
 }, {
   timezone: "Europe/Madrid"
 });
 
-cron.schedule("*/3 13-16 * * 1-5", async () => {
-  const now = new Date();
-  const hour = now.getHours();
-  const minutes = now.getMinutes();
+cron.schedule("0,3 9 * * 1-5", async () => {
+  await runMonitor();
+}, {
+  timezone: "Europe/Madrid"
+});
 
-  // Stop after 16:05
-  if (hour === 16 && minutes > 5) return;
+cron.schedule("*/3 13-15 * * 1-5", async () => {
+  await runMonitor();
+}, {
+  timezone: "Europe/Madrid"
+});
 
+cron.schedule("0,3 16 * * 1-5", async () => {
   await runMonitor();
 }, {
   timezone: "Europe/Madrid"
