@@ -1,5 +1,16 @@
 require("dotenv").config();
 
+const http = require("http");
+
+const PORT = process.env.PORT || 3000;
+
+http.createServer((req, res) => {
+  res.writeHead(200, { "Content-Type": "text/plain" });
+  res.end("Keynua Monitor is running");
+}).listen(PORT, () => {
+  console.log(`Health server running on port ${PORT}`);
+});
+
 const fs = require("fs");
 fs.mkdirSync("logs", { recursive: true });
 
@@ -116,28 +127,42 @@ Time: ${now} CET`
 }
 
 console.log("Keynua monitor scheduler started");
-runMonitor();
+//runMonitor();
 
 cron.schedule("*/3 7-9 * * 1-5", async () => {
   const now = new Date();
-  const minutes = now.getMinutes();
   const hour = now.getHours();
+  const minutes = now.getMinutes();
 
+  // Stop after 09:05
   if (hour === 9 && minutes > 5) return;
 
   await runMonitor();
+}, {
+  timezone: "Europe/Madrid"
 });
 
-cron.schedule("*/3 12-16 * * 1-5", async () => {
+cron.schedule("*/3 13-16 * * 1-5", async () => {
   const now = new Date();
-  const minutes = now.getMinutes();
   const hour = now.getHours();
+  const minutes = now.getMinutes();
 
+  // Stop after 16:05
   if (hour === 16 && minutes > 5) return;
 
   await runMonitor();
+}, {
+  timezone: "Europe/Madrid"
 });
 
 cron.schedule("0 7 * * 1-5", async () => {
   await sendHeartbeat();
+}, {
+  timezone: "Europe/Madrid"
+});
+
+cron.schedule("0 13 * * 1-5", async () => {
+  await sendHeartbeat();
+}, {
+  timezone: "Europe/Madrid"
 });
