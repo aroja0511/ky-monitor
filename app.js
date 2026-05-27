@@ -25,6 +25,8 @@ const monitorLiveness = require("./src/monitors/liveness");
 const monitorTranscribe = require("./src/monitors/transcribe");
 const monitorFraud = require("./src/monitors/fraud");
 
+const ENVIRONMENTS = require("./src/config/environments");
+
 const sendPushover = require("./src/services/pushover");
 
 async function runMonitor() {
@@ -59,47 +61,58 @@ async function runMonitor() {
 
     await ensureLoggedIn(page, context);
 
-    const livenessRequests = await monitorLiveness(page);
+    for (const env of ENVIRONMENTS) {
 
-    for (const request of livenessRequests) {
-      await sendPushover(
-        "🚨 New Liveness Request",
-        `Created: ${request.createdAt}
+  console.log(`\n===== ${env.label} =====`);
 
-Request ID:
-${request.itemId}`
-      );
-    }
+  const livenessRequests = await monitorLiveness(page, env);
 
-    console.log(`Found ${livenessRequests.length} new liveness requests`);
-
-    const transcribeRequests = await monitorTranscribe(page);
-
-    for (const request of transcribeRequests) {
-      await sendPushover(
-        "🚨 New Transcribe Request",
-        `Created: ${request.createdAt}
+  for (const request of livenessRequests) {
+    await sendPushover(
+      `🚨 [${env.label}] New Liveness Request`,
+      `Created: ${request.createdAt}
 
 Request ID:
 ${request.itemId}`
-      );
-    }
+    );
+  }
 
-    console.log(`Found ${transcribeRequests.length} new transcribe requests`);
+  console.log(
+    `[${env.label}] Found ${livenessRequests.length} new liveness requests`
+  );
 
-    const fraudRequests = await monitorFraud(page);
+  const transcribeRequests = await monitorTranscribe(page, env);
 
-    for (const request of fraudRequests) {
-      await sendPushover(
-        "🚨 New Fraud Detection Request",
-        `Created: ${request.createdAt}
+  for (const request of transcribeRequests) {
+    await sendPushover(
+      `🚨 [${env.label}] New Transcribe Request`,
+      `Created: ${request.createdAt}
 
 Request ID:
 ${request.itemId}`
-      );
-    }
+    );
+  }
 
-    console.log(`Found ${fraudRequests.length} new fraud requests`);
+  console.log(
+    `[${env.label}] Found ${transcribeRequests.length} new transcribe requests`
+  );
+
+  const fraudRequests = await monitorFraud(page, env);
+
+  for (const request of fraudRequests) {
+    await sendPushover(
+      `🚨 [${env.label}] New Fraud Detection Request`,
+      `Created: ${request.createdAt}
+
+Request ID:
+${request.itemId}`
+    );
+  }
+
+  console.log(
+    `[${env.label}] Found ${fraudRequests.length} new fraud requests`
+  );
+}
 
   } catch (error) {
 

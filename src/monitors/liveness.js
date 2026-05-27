@@ -1,31 +1,33 @@
 const fs = require("fs");
 const path = require("path");
 
-const SEEN_FILE = "state/liveness.json";
-
-function loadSeen() {
-  if (!fs.existsSync(SEEN_FILE)) return [];
-  return JSON.parse(fs.readFileSync(SEEN_FILE));
+function getSeenFile(env) {
+  return `state/${env.key}-liveness.json`;
 }
 
-function saveSeen(data) {
-  fs.mkdirSync(path.dirname(SEEN_FILE), { recursive: true });
+function loadSeen(env) {
+  const seenFile = getSeenFile(env);
 
-  fs.writeFileSync(SEEN_FILE, JSON.stringify(data, null, 2));
+  if (!fs.existsSync(seenFile)) return [];
+
+  return JSON.parse(fs.readFileSync(seenFile));
 }
 
-async function monitorLiveness(page) {
-  await page.goto("https://admin.keynua.com/liveness-detection-approval/", {
+function saveSeen(env, data) {
+  const seenFile = getSeenFile(env);
+
+  fs.mkdirSync(path.dirname(seenFile), { recursive: true });
+  fs.writeFileSync(seenFile, JSON.stringify(data, null, 2));
+}
+
+async function monitorLiveness(page, env) {
+  await page.goto(`${env.baseUrl}/liveness-detection-approval/`, {
     waitUntil: "networkidle"
   });
 
   await page.waitForTimeout(7000);
 
   const pageText = await page.locator("body").innerText();
-  
-/*   	console.log("Liveness URL:", page.url());
-	console.log("Liveness text preview:");
-	console.log(pageText.slice(0, 2000)); */
 
   const itemIdMatches = pageText.match(
     /[a-f0-9-]+:item:\d+:\d+/gi
@@ -41,17 +43,13 @@ async function monitorLiveness(page) {
     type: "Liveness Detection"
   }));
 
-  console.log("Detected liveness rows:", rows);
+  console.log(`[${env.label}] Detected liveness rows:`, rows);
 
-  const seen = loadSeen();
-
+  const seen = loadSeen(env);
   const newRequests = rows.filter(r => !seen.includes(r.itemId));
 
   if (newRequests.length > 0) {
-    saveSeen([
-      ...seen,
-      ...newRequests.map(r => r.itemId)
-    ]);
+    saveSeen(env, [...seen, ...newRequests.map(r => r.itemId)]);
   }
 
   return newRequests;
