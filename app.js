@@ -70,7 +70,7 @@ async function runMonitor() {
   for (const request of livenessRequests) {
     await sendPushover(
       `🚨 [${env.label}] New Liveness Request`,
-      `Created: ${request.createdAt}
+      `Created: ${formatKeynuaTime(request.createdAt)} CET
 
 Request ID:
 ${request.itemId}`
@@ -86,7 +86,7 @@ ${request.itemId}`
   for (const request of transcribeRequests) {
     await sendPushover(
       `🚨 [${env.label}] New Transcribe Request`,
-      `Created: ${request.createdAt}
+      `Created: ${formatKeynuaTime(request.createdAt)} CET
 
 Request ID:
 ${request.itemId}`
@@ -102,7 +102,7 @@ ${request.itemId}`
   for (const request of fraudRequests) {
     await sendPushover(
       `🚨 [${env.label}] New Fraud Detection Request`,
-      `Created: ${request.createdAt}
+      `Created: ${formatKeynuaTime(request.createdAt)} CET
 
 Request ID:
 ${request.itemId}`
@@ -226,3 +226,24 @@ cron.schedule("4 16 * * 1-5", async () => {
 }, {
   timezone: "Europe/Madrid"
 });
+
+function formatKeynuaTime(createdAt) {
+  if (!createdAt || createdAt === "Unknown") return createdAt;
+
+  const [datePart, timePart] = createdAt.split(" ");
+  const [day, month, year] = datePart.split("/");
+  const [hour, minute, second] = timePart.split(":");
+
+  const utcDate = new Date(Date.UTC(
+    Number(year),
+    Number(month) - 1,
+    Number(day),
+    Number(hour),
+    Number(minute),
+    Number(second)
+  ));
+
+  return utcDate.toLocaleString("en-GB", {
+    timeZone: "Europe/Madrid"
+  });
+}

@@ -3,8 +3,12 @@ const ENVIRONMENTS = [
     key: "prod",
     label: "PROD",
     baseUrl: "https://admin.keynua.com"
+  },
+  {
+    key: "stg",
+    label: "STG",
+    baseUrl: "https://admin.stg.keynua.com"
   }
-  // STG will be added after PROD still works with this structure
 ];
 
 module.exports = ENVIRONMENTS;
