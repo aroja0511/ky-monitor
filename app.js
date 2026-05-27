@@ -70,11 +70,12 @@ async function runMonitor() {
   for (const request of livenessRequests) {
     await sendPushover(
       `🚨 [${env.label}] New Liveness Request`,
-      `Created: ${formatKeynuaTime(request.createdAt)} CET
+      `Tab: ${request.location}
+       Created: ${formatKeynuaTime(request.createdAt)} CET
 
-Request ID:
-${request.itemId}`
-    );
+		Request ID:
+		${request.itemId}`
+ 	);
   }
 
   console.log(

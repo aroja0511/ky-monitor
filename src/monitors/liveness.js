@@ -20,13 +20,7 @@ function saveSeen(env, data) {
   fs.writeFileSync(seenFile, JSON.stringify(data, null, 2));
 }
 
-async function monitorLiveness(page, env) {
-  await page.goto(`${env.baseUrl}/liveness-detection-approval/`, {
-    waitUntil: "networkidle"
-  });
-
-  await page.waitForTimeout(7000);
-
+async function extractLivenessRows(page) {
   const pageText = await page.locator("body").innerText();
 
   const itemIdMatches = pageText.match(
@@ -37,16 +31,41 @@ async function monitorLiveness(page, env) {
     /\d{2}\/\d{2}\/\d{4}\s\d{2}:\d{2}:\d{2}/g
   ) || [];
 
-  const rows = itemIdMatches.map((itemId, index) => ({
+  return itemIdMatches.map((itemId, index) => ({
     itemId,
     createdAt: dateMatches[index] || "Unknown",
-    type: "Liveness Detection"
+    type: "Liveness Detection",
+    location
   }));
+}
 
-  console.log(`[${env.label}] Detected liveness rows:`, rows);
+async function monitorLiveness(page, env) {
+  await page.goto(`${env.baseUrl}/liveness-detection-approval/`, {
+    waitUntil: "networkidle"
+  });
+
+  await page.waitForTimeout(7000);
+
+  let rows = [];
+
+  rows = rows.concat(await extractLivenessRows(page,"Prioridad Alta"));
+
+  const lowPriorityTab = page.locator("text=Prioridad baja");
+
+  if (await lowPriorityTab.count()) {
+    await lowPriorityTab.click();
+    await page.waitForTimeout(5000);
+    rows = rows.concat(await extractLivenessRows(page,"Prioridad Baja"));
+  }
+
+  const uniqueRows = Array.from(
+    new Map(rows.map(row => [row.itemId, row])).values()
+  );
+
+  console.log(`[${env.label}] Detected liveness rows:`, uniqueRows);
 
   const seen = loadSeen(env);
-  const newRequests = rows.filter(r => !seen.includes(r.itemId));
+  const newRequests = uniqueRows.filter(r => !seen.includes(r.itemId));
 
   if (newRequests.length > 0) {
     saveSeen(env, [...seen, ...newRequests.map(r => r.itemId)]);
