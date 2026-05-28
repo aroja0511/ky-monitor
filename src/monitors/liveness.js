@@ -20,7 +20,7 @@ function saveSeen(env, data) {
   fs.writeFileSync(seenFile, JSON.stringify(data, null, 2));
 }
 
-async function extractLivenessRows(page) {
+async function extractLivenessRows(page, location) {
   const pageText = await page.locator("body").innerText();
 
   const itemIdMatches = pageText.match(
