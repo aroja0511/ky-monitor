@@ -17,6 +17,7 @@ fs.mkdirSync("logs", { recursive: true });
 const cron = require("node-cron");
 
 let isRunning = false;
+let skipAlertSent = false;
 
 const { getBrowser, getContext } = require("./src/services/browser");
 const ensureLoggedIn = require("./src/services/auth");
@@ -32,12 +33,26 @@ const sendPushover = require("./src/services/pushover");
 async function runMonitor() {
 
   if (isRunning) {
-    console.log("Previous monitor run still active. Skipping this cycle.");
-    return;
+
+  console.log("Previous monitor run still active. Skipping this cycle.");
+
+  if (!skipAlertSent) {
+
+    skipAlertSent = true;
+
+    await sendPushover(
+      "⚠️ Keynua Monitor Delayed",
+      "A monitor cycle was skipped because the previous run is still active."
+    );
   }
 
-  isRunning = true;
+  return;
+}
 
+  isRunning = true;
+  
+  const startedAt = Date.now();
+  
   console.log("Running Keynua monitor...");
 
   const now = new Date().toLocaleString("en-GB", {
@@ -69,10 +84,8 @@ async function runMonitor() {
 
   for (const request of livenessRequests) {
     await sendPushover(
-      `🚨 [${env.label}] New Liveness Request`,
-      `Tab: ${request.location}
-       Created: ${formatKeynuaTime(request.createdAt)} CET
-
+      `🚨 [${env.label}] New Liveness ${request.location} Request`,
+      	`Created: ${formatKeynuaTime(request.createdAt)} CET
 		Request ID:
 		${request.itemId}`
  	);
@@ -139,7 +152,12 @@ ${request.itemId}`
     );
 
   } finally {
+  
+  	const duration = ((Date.now() - startedAt) / 1000).toFixed(1);
+	console.log(`Monitor completed in ${duration}s`);
 
+	skipAlertSent = false;
+	
     isRunning = false;
 
     if (browser) {
@@ -180,25 +198,25 @@ console.log("Keynua monitor scheduler started");
 
 // runMonitor();
 
-cron.schedule("*/3 7-8 * * 1-5", async () => {
+cron.schedule("*/2 7-8 * * 1-5", async () => {
   await runMonitor();
 }, {
   timezone: "Europe/Madrid"
 });
 
-cron.schedule("0,3 9 * * 1-5", async () => {
+cron.schedule("0,2,4 9 * * 1-5", async () => {
   await runMonitor();
 }, {
   timezone: "Europe/Madrid"
 });
 
-cron.schedule("*/3 13-15 * * 1-5", async () => {
+cron.schedule("*/2 13-15 * * 1-5", async () => {
   await runMonitor();
 }, {
   timezone: "Europe/Madrid"
 });
 
-cron.schedule("0,3 16 * * 1-5", async () => {
+cron.schedule("0,2,4 16 * * 1-5", async () => {
   await runMonitor();
 }, {
   timezone: "Europe/Madrid"
