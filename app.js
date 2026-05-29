@@ -1,5 +1,14 @@
 require("dotenv").config();
 
+console.log(`
+=================================
+KEYNUA MONITOR STARTING
+PID: ${process.pid}
+Time: ${new Date().toISOString()}
+Node: ${process.version}
+=================================
+`);
+
 const http = require("http");
 
 const PORT = process.env.PORT || 3000;
@@ -31,6 +40,18 @@ const ENVIRONMENTS = require("./src/config/environments");
 const sendPushover = require("./src/services/pushover");
 
 async function runMonitor() {
+
+	const day = new Date().getDay(); // 0=Sun, 6=Sat
+
+  		if (day === 0 || day === 6) {
+   			console.log('Weekend detected, skipping monitor run');
+    		return;
+
+  		}
+  		
+  console.log(
+    `[HEALTH] PID=${process.pid} Uptime=${Math.round(process.uptime())}s`
+  );
 
   if (isRunning) {
 
