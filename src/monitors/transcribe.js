@@ -2,57 +2,63 @@ const fs = require("fs");
 const path = require("path");
 
 function getSeenFile(env) {
-  return `state/${env.key}-transcribe.json`;
+    return `state/${env.key}-transcribe.json`;
 }
 
 function loadSeen(env) {
-  const seenFile = getSeenFile(env);
+    const seenFile = getSeenFile(env);
 
-  if (!fs.existsSync(seenFile)) return [];
+    if (!fs.existsSync(seenFile)) return [];
 
-  return JSON.parse(fs.readFileSync(seenFile));
+    return JSON.parse(fs.readFileSync(seenFile));
 }
 
 function saveSeen(env, data) {
-  const seenFile = getSeenFile(env);
+    const seenFile = getSeenFile(env);
 
-  fs.mkdirSync(path.dirname(seenFile), { recursive: true });
-  fs.writeFileSync(seenFile, JSON.stringify(data, null, 2));
+    fs.mkdirSync(path.dirname(seenFile), {
+        recursive: true
+    });
+    fs.writeFileSync(seenFile, JSON.stringify(data, null, 2));
 }
 
 async function monitorTranscribe(page, env) {
-  await page.goto(`${env.baseUrl}/transcribe/`, {
-    waitUntil: "networkidle"
-  });
+    await page.goto(`${env.baseUrl}/transcribe/`, {
+        waitUntil: "networkidle"
+    });
 
-  await page.waitForTimeout(7000);
+    await page.waitForTimeout(7000);
 
-  const pageText = await page.locator("body").innerText();
+    const pageText = await page.locator("body").innerText();
+ 
+        console.log(`[${env.label}] Transcribe URL: ${page.url()}`);
+        console.log(`[${env.label}] Transcribe text preview:`);
+        console.log(pageText.slice(0, 2000));
 
-  const itemIdMatches = pageText.match(
-    /[a-f0-9-]{8,}-[a-f0-9-]+:\d+:\d+/gi
-  ) || [];
+    const itemIdMatches = pageText.match(
+        /[a-f0-9-]{8,}-[a-f0-9-]+:\d+:\d+/gi
+    ) || [];
 
-  const dateMatches = pageText.match(
-    /\d{2}\/\d{2}\/\d{4}\s\d{2}:\d{2}:\d{2}/g
-  ) || [];
+    const dateMatches = pageText.match(
+        /\d{2}\/\d{2}\/\d{4}\s\d{2}:\d{2}:\d{2}/g
+    ) || [];
 
-  const rows = itemIdMatches.map((itemId, index) => ({
-    itemId,
-    createdAt: dateMatches[index] || "Unknown",
-    type: "Transcribe"
-  }));
+    const rows = itemIdMatches.map((itemId, index) => ({
+        itemId,
+        createdAt: dateMatches[index] || "Unknown",
+        type: "Transcribe"
+    }));
 
-  console.log(`[${env.label}] Detected transcribe rows:`, rows);
+    console.log(`[${env.label}] Detected transcribe rows:`, rows);
 
-  const seen = loadSeen(env);
-  const newRequests = rows.filter(r => !seen.includes(r.itemId));
+    const seen = loadSeen(env);
+    const newRequests = rows.filter(r => !seen.includes(r.itemId));
 
-  if (newRequests.length > 0) {
-    saveSeen(env, [...seen, ...newRequests.map(r => r.itemId)]);
-  }
+    if (newRequests.length > 0) {
+        saveSeen(env, [...seen, ...newRequests.map(r => r.itemId)]);
+    }
 
-  return newRequests;
+    return newRequests;
 }
 
 module.exports = monitorTranscribe;
