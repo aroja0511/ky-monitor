@@ -14,21 +14,28 @@ const http = require("http");
 const PORT = process.env.PORT || 3000;
 
 http.createServer((req, res) => {
-  res.writeHead(200, { "Content-Type": "text/plain" });
-  res.end("Keynua Monitor is running");
+    res.writeHead(200, {
+        "Content-Type": "text/plain"
+    });
+    res.end("Keynua Monitor is running");
 }).listen(PORT, () => {
-  console.log(`Health server running on port ${PORT}`);
+    console.log(`Health server running on port ${PORT}`);
 });
 
 const fs = require("fs");
-fs.mkdirSync("logs", { recursive: true });
+fs.mkdirSync("logs", {
+    recursive: true
+});
 
 const cron = require("node-cron");
 
 let isRunning = false;
 let skipAlertSent = false;
 
-const { getBrowser, getContext } = require("./src/services/browser");
+const {
+    getBrowser,
+    getContext
+} = require("./src/services/browser");
 const ensureLoggedIn = require("./src/services/auth");
 
 const monitorLiveness = require("./src/monitors/liveness");
@@ -41,178 +48,179 @@ const sendPushover = require("./src/services/pushover");
 
 async function runMonitor() {
 
-	const day = new Date().getDay(); // 0=Sun, 6=Sat
+    const startedAt = Date.now();
 
-  		if (day === 0 || day === 6) {
-   			console.log('Weekend detected, skipping monitor run');
-    		return;
-
-  		}
-  		
-  console.log(
-    `[HEALTH] PID=${process.pid} Uptime=${Math.round(process.uptime())}s`
-  );
-
-  if (isRunning) {
-
-  console.log("Previous monitor run still active. Skipping this cycle.");
-
-  if (!skipAlertSent) {
-
-    skipAlertSent = true;
-
-    await sendPushover(
-      "⚠️ Keynua Monitor Delayed",
-      "A monitor cycle was skipped because the previous run is still active."
-    );
-  }
-
-  return;
-}
-
-  isRunning = true;
-  
-  const startedAt = Date.now();
-  
-  console.log("Running Keynua monitor...");
-
-  const now = new Date().toLocaleString("en-GB", {
-    timeZone: "Europe/Madrid"
-  });
-
-  console.log(`\n==========`);
-  console.log(`Check started: ${now} CET`);
-  console.log(`==========`);
-
-  const browser = await getBrowser();
-  let page;
-
-  try {
-    const context = await getContext(browser);
-    page = await context.newPage();
-
-    await page.goto("https://admin.keynua.com/liveness-detection-approval/", {
-      waitUntil: "networkidle"
+    const madridDay = new Date().toLocaleString("en-US", {
+        timeZone: "Europe/Madrid",
+        weekday: "short"
     });
 
-    await ensureLoggedIn(page, context);
+    if (madridDay === "Sat" || madridDay === "Sun") {
+        console.log("Weekend detected, skipping monitor run");
+        return;
+    }
 
-    for (const env of ENVIRONMENTS) {
-
-  console.log(`\n===== ${env.label} =====`);
-
-  const livenessRequests = await monitorLiveness(page, env);
-
-  for (const request of livenessRequests) {
-    await sendPushover(
-      `🚨 [${env.label}] New Liveness ${request.location} Request`,
-      	`Created: ${formatKeynuaTime(request.createdAt)} CET
-		Request ID:
-		${request.itemId}`
- 	);
-  }
-
-  console.log(
-    `[${env.label}] Found ${livenessRequests.length} new liveness requests`
-  );
-
-  const transcribeRequests = await monitorTranscribe(page, env);
-
-  for (const request of transcribeRequests) {
-    await sendPushover(
-      `🚨 [${env.label}] New Transcribe Request`,
-      `Created: ${formatKeynuaTime(request.createdAt)} CET
-
-Request ID:
-${request.itemId}`
+    console.log(
+        `[HEALTH] PID=${process.pid} Uptime=${Math.round(process.uptime())}s`
     );
-  }
 
-  console.log(
-    `[${env.label}] Found ${transcribeRequests.length} new transcribe requests`
-  );
+    if (isRunning) {
 
-  const fraudRequests = await monitorFraud(page, env);
+        console.log("Previous monitor run still active. Skipping this cycle.");
 
-  for (const request of fraudRequests) {
-    await sendPushover(
-      `🚨 [${env.label}] New Fraud Detection Request`,
-      `Created: ${formatKeynuaTime(request.createdAt)} CET
+        if (!skipAlertSent) {
 
-Request ID:
-${request.itemId}`
-    );
-  }
+            skipAlertSent = true;
 
-  console.log(
-    `[${env.label}] Found ${fraudRequests.length} new fraud requests`
-  );
-}
+            await sendPushover(
+                "⚠️ Keynua Monitor Delayed",
+                "A monitor cycle was skipped because the previous run is still active."
+            );
+        }
 
-  } catch (error) {
+        return;
+    }
 
-    console.error("Monitor error:", error);
+    isRunning = true;
 
-    if (page) {
-      try {
-        await page.screenshot({
-          path: `logs/error-${Date.now()}.png`,
-          fullPage: true
+
+
+    console.log("Running Keynua monitor...");
+
+    const now = new Date().toLocaleString("en-GB", {
+        timeZone: "Europe/Madrid"
+    });
+
+    console.log(`\n==========`);
+    console.log(`Check started: ${now} CET`);
+    console.log(`==========`);
+
+    let browser;
+    let page;
+
+    try {
+        browser = await getBrowser();
+        const context = await getContext(browser);
+        page = await context.newPage();
+
+        await page.goto("https://admin.keynua.com/liveness-detection-approval/", {
+            waitUntil: "networkidle"
         });
-      } catch (screenshotError) {
-        console.error(
-          "Failed to capture screenshot:",
-          screenshotError.message
+
+        await ensureLoggedIn(page, context);
+
+        for (const env of ENVIRONMENTS) {
+
+            console.log(`\n===== ${env.label} =====`);
+
+            const livenessRequests = await monitorLiveness(page, env);
+
+            for (const request of livenessRequests) {
+                await sendPushover(
+                    `🚨 [${env.label}] New Liveness ${request.location} Request`,
+                    `Created: ${formatKeynuaTime(request.createdAt)} CET
+					Request ID:
+					${request.itemId}`
+                );
+            }
+
+            console.log(
+                `[${env.label}] Found ${livenessRequests.length} new liveness requests`
+            );
+
+            const transcribeRequests = await monitorTranscribe(page, env);
+
+            for (const request of transcribeRequests) {
+                await sendPushover(
+                    `🚨 [${env.label}] New Transcribe Request`,
+                    `Created: ${formatKeynuaTime(request.createdAt)} CET
+					Request ID:
+					${request.itemId}`
+                );
+            }
+
+            console.log(
+                `[${env.label}] Found ${transcribeRequests.length} new transcribe requests`
+            );
+
+            const fraudRequests = await monitorFraud(page, env);
+
+            for (const request of fraudRequests) {
+                await sendPushover(
+                    `🚨 [${env.label}] New Fraud Detection Request`,
+                    `Created: ${formatKeynuaTime(request.createdAt)} CET
+					Request ID:
+					${request.itemId}`
+                );
+            }
+
+            console.log(
+                `[${env.label}] Found ${fraudRequests.length} new fraud requests`
+            );
+        }
+
+    } catch (error) {
+
+        console.error("Monitor error:", error);
+
+        if (page) {
+            try {
+                await page.screenshot({
+                    path: `logs/error-${Date.now()}.png`,
+                    fullPage: true
+                });
+            } catch (screenshotError) {
+                console.error(
+                    "Failed to capture screenshot:",
+                    screenshotError.message
+                );
+            }
+        }
+
+        await sendPushover(
+            "⚠️ Keynua Monitor Error",
+            error.message
         );
-      }
+
+    } finally {
+
+        const duration = ((Date.now() - startedAt) / 1000).toFixed(1);
+        console.log(`Monitor completed in ${duration}s`);
+
+        skipAlertSent = false;
+
+        isRunning = false;
+
+        if (browser) {
+            await browser.close();
+        }
     }
-
-    await sendPushover(
-      "⚠️ Keynua Monitor Error",
-      error.message
-    );
-
-  } finally {
-  
-  	const duration = ((Date.now() - startedAt) / 1000).toFixed(1);
-	console.log(`Monitor completed in ${duration}s`);
-
-	skipAlertSent = false;
-	
-    isRunning = false;
-
-    if (browser) {
-      await browser.close();
-    }
-  }
 }
 
 async function sendHeartbeat() {
 
-  const now = new Date().toLocaleString("en-GB", {
-    timeZone: "Europe/Madrid"
-  });
+    const now = new Date().toLocaleString("en-GB", {
+        timeZone: "Europe/Madrid"
+    });
 
-  await sendPushover(
-    "✅ Keynua Monitor Heartbeat",
-    `Monitor is running.
-
-Time: ${now} CET`
-  );
+    await sendPushover(
+        "✅ Keynua Monitor Heartbeat",
+        `Monitor is running.
+		Time: ${now} CET`
+    );
 }
 
 async function sendFlatline(period) {
 
-  const now = new Date().toLocaleString("en-GB", {
-    timeZone: "Europe/Madrid"
-  });
+    const now = new Date().toLocaleString("en-GB", {
+        timeZone: "Europe/Madrid"
+    });
 
-  await sendPushover(
-    "🛑 Keynua Monitor Flatline",
-    `${period} monitoring window ended.
-
-Time: ${now} CET`
-  );
+    await sendPushover(
+        "🛑 Keynua Monitor Flatline",
+        `${period} monitoring window ended.
+		Time: ${now} CET`
+    );
 }
 
 console.log("Keynua monitor scheduler started");
@@ -220,70 +228,70 @@ console.log("Keynua monitor scheduler started");
 // runMonitor();
 
 cron.schedule("*/2 7-8 * * 1-5", async () => {
-  await runMonitor();
+    await runMonitor();
 }, {
-  timezone: "Europe/Madrid"
+    timezone: "Europe/Madrid"
 });
 
 cron.schedule("0,2,4 9 * * 1-5", async () => {
-  await runMonitor();
+    await runMonitor();
 }, {
-  timezone: "Europe/Madrid"
+    timezone: "Europe/Madrid"
 });
 
 cron.schedule("*/2 13-15 * * 1-5", async () => {
-  await runMonitor();
+    await runMonitor();
 }, {
-  timezone: "Europe/Madrid"
+    timezone: "Europe/Madrid"
 });
 
 cron.schedule("0,2,4 16 * * 1-5", async () => {
-  await runMonitor();
+    await runMonitor();
 }, {
-  timezone: "Europe/Madrid"
+    timezone: "Europe/Madrid"
 });
 
 cron.schedule("0 7 * * 1-5", async () => {
-  await sendHeartbeat();
+    await sendHeartbeat();
 }, {
-  timezone: "Europe/Madrid"
+    timezone: "Europe/Madrid"
 });
 
 cron.schedule("0 13 * * 1-5", async () => {
-  await sendHeartbeat();
+    await sendHeartbeat();
 }, {
-  timezone: "Europe/Madrid"
+    timezone: "Europe/Madrid"
 });
 
 cron.schedule("4 9 * * 1-5", async () => {
-  await sendFlatline("Morning");
+    await sendFlatline("Morning");
 }, {
-  timezone: "Europe/Madrid"
+    timezone: "Europe/Madrid"
 });
 
 cron.schedule("4 16 * * 1-5", async () => {
-  await sendFlatline("Afternoon");
+    await sendFlatline("Afternoon");
 }, {
-  timezone: "Europe/Madrid"
+    timezone: "Europe/Madrid"
 });
 
 function formatKeynuaTime(createdAt) {
-  if (!createdAt || createdAt === "Unknown") return createdAt;
+    if (!createdAt || createdAt === "Unknown") return createdAt;
 
-  const [datePart, timePart] = createdAt.split(" ");
-  const [day, month, year] = datePart.split("/");
-  const [hour, minute, second] = timePart.split(":");
+    const [datePart, timePart] = createdAt.split(" ");
+    const [day, month, year] = datePart.split("/");
+    const [hour, minute, second] = timePart.split(":");
 
-  const utcDate = new Date(Date.UTC(
-    Number(year),
-    Number(month) - 1,
-    Number(day),
-    Number(hour),
-    Number(minute),
-    Number(second)
-  ));
+    const utcDate = new Date(Date.UTC(
+        Number(year),
+        Number(month) - 1,
+        Number(day),
+        Number(hour),
+        Number(minute),
+        Number(second)
+    ));
 
-  return utcDate.toLocaleString("en-GB", {
-    timeZone: "Europe/Madrid"
-  });
+    return utcDate.toLocaleString("en-GB", {
+        timeZone: "Europe/Madrid"
+    });
 }
