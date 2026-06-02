@@ -27,9 +27,9 @@ async function extractLivenessRows(page, location) {
     const pageText = await page.locator("body").innerText();
 
     console.log(`[LIVENESS] URL: ${page.url()}`);
-    console.log(`[LIVENESS] Location: ${location}`);
-    console.log(`[LIVENESS] Text Preview:`);
-    console.log(pageText.slice(0, 2000));
+    //console.log(`[LIVENESS] Location: ${location}`);
+    //console.log(`[LIVENESS] Text Preview:`);
+    //console.log(pageText.slice(0, 2000));
 
     const itemIdMatches = pageText.match(
         /[a-f0-9-]+:item:\d+:\d+/gi

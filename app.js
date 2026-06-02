@@ -61,7 +61,7 @@ async function runMonitor() {
     }
 
     console.log(
-        `[HEALTH] PID=${process.pid} Uptime=${Math.round(process.uptime())}s`
+        `[HEALTH] PID=${process.pid} || Uptime=${Math.round(process.uptime())}s`
     );
 
     if (isRunning) {
@@ -85,15 +85,15 @@ async function runMonitor() {
 
 
 
-    console.log("Running Keynua monitor...");
+    console.log("– Keynua Monitor Running –\n");
 
     const now = new Date().toLocaleString("en-GB", {
         timeZone: "Europe/Madrid"
     });
 
-    console.log(`\n==========`);
-    console.log(`Check started: ${now} CET`);
     console.log(`==========`);
+    console.log(`Check started: ${now} CET`);
+    console.log(`==========\n`);
 
     let browser;
     let page;
@@ -103,7 +103,7 @@ async function runMonitor() {
 
         for (const env of ENVIRONMENTS) {
 
-            console.log(`\n===== ${env.label} =====`);
+            console.log(`===== ${env.label} =====`);
             
             const context = await getContext(browser, env);
             page = await context.newPage();
@@ -130,11 +130,8 @@ async function runMonitor() {
 
             for (const request of transcribeRequests) {
                 await sendPushover(
-                    `🚨 [${env.label}] New Transcribe Request`,
-                    `Created: ${formatKeynuaTime(request.createdAt)} CET
-					Request ID:
-					${request.itemId}`
-                );
+                    `🚨 [${env.label}] New Transcribe Request`,[`Created: ${formatKeynuaTime(request.createdAt)} CET`, "Request ID:",request.itemId].join("\n")
+                    );
             }
 
             console.log(
@@ -145,11 +142,8 @@ async function runMonitor() {
 
             for (const request of fraudRequests) {
                 await sendPushover(
-                    `🚨 [${env.label}] New Fraud Detection Request`,
-                    `Created: ${formatKeynuaTime(request.createdAt)} CET
-					Request ID:
-					${request.itemId}`
-                );
+                    `🚨 [${env.label}] New Fraud Detection Request`,`Created: ${formatKeynuaTime(request.createdAt)} CET`, "Request ID:",request.itemId].join("\n")
+                    );
             }
 
             console.log(

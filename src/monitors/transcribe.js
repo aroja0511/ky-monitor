@@ -31,9 +31,9 @@ async function monitorTranscribe(page, env) {
 
     const pageText = await page.locator("body").innerText();
  
-        console.log(`[${env.label}] Transcribe URL: ${page.url()}`);
-        console.log(`[${env.label}] Transcribe text preview:`);
-        console.log(pageText.slice(0, 2000));
+        //console.log(`[${env.label}] Transcribe URL: ${page.url()}`);
+        //console.log(`[${env.label}] Transcribe text preview:`);
+        //console.log(pageText.slice(0, 2000));
 
     const itemIdMatches = pageText.match(
         /[a-f0-9-]{8,}-[a-f0-9-]+:\d+:\d+/gi
