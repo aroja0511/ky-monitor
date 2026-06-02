@@ -142,7 +142,7 @@ async function runMonitor() {
 
             for (const request of fraudRequests) {
                 await sendPushover(
-                    `🚨 [${env.label}] New Fraud Detection Request`,`Created: ${formatKeynuaTime(request.createdAt)} CET`, "Request ID:",request.itemId].join("\n")
+                    `🚨 [${env.label}] New Fraud Detection Request`,[`Created: ${formatKeynuaTime(request.createdAt)} CET`, "Request ID:",request.itemId].join("\n")
                     );
             }
 
