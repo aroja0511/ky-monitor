@@ -103,15 +103,21 @@ async function runMonitor() {
         const context = await getContext(browser);
         page = await context.newPage();
 
-        await page.goto("https://admin.keynua.com/liveness-detection-approval/", {
+        /* await page.goto("https://admin.keynua.com/liveness-detection-approval/", {
             waitUntil: "networkidle"
         });
 
-        await ensureLoggedIn(page, context);
+        await ensureLoggedIn(page, context); */
 
         for (const env of ENVIRONMENTS) {
 
             console.log(`\n===== ${env.label} =====`);
+            
+            await page.goto(`${env.baseUrl}/liveness-detection-approval/`, {
+            	waitUntil: "networkidle"
+			});
+
+			await ensureLoggedIn(page, context);
 
             const livenessRequests = await monitorLiveness(page, env);
 
