@@ -1,6 +1,9 @@
 const { chromium } = require("playwright");
+const fs = require("fs");
 
-const SESSION_FILE = "sessions/keynua-session.json";
+function getSessionFile(env) {
+  return `sessions/keynua-${env.key}-session.json`;
+}
 
 async function getBrowser() {
   return await chromium.launch({
@@ -9,22 +12,29 @@ async function getBrowser() {
   });
 }
 
-async function getContext(browser) {
+async function getContext(browser, env) {
+  const sessionFile = getSessionFile(env);
+
   try {
     return await browser.newContext({
-		storageState: SESSION_FILE,
- 		viewport: {
-    		width: 1920,
-    		height: 1080
-    	}
+      storageState: sessionFile,
+      viewport: {
+        width: 1920,
+        height: 1080
+      }
     });
   } catch {
-    return await browser.newContext();
+    return await browser.newContext({
+      viewport: {
+        width: 1920,
+        height: 1080
+      }
+    });
   }
 }
 
 module.exports = {
   getBrowser,
   getContext,
-  SESSION_FILE
+  getSessionFile
 };

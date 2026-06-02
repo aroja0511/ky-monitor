@@ -1,13 +1,19 @@
-const { SESSION_FILE } = require("./browser");
+const { getSessionFile } = require("./browser");
 
-async function ensureLoggedIn(page, context) {
+async function ensureLoggedIn(page, context, env) {
   const bodyText = await page.locator("body").innerText();
+  const currentUrl = page.url();
 
-  if (!bodyText.includes("Sign in")) {
+  const isLoginPage =
+    currentUrl.includes("/auth/login") ||
+    bodyText.includes("Sign in") ||
+    bodyText.includes("SIGN IN");
+
+  if (!isLoginPage) {
     return;
   }
 
-  console.log("Session expired. Logging in again...");
+  console.log(`[${env.label}] Session expired. Logging in again...`);
 
   await page.fill('input[placeholder="Email address"]', process.env.KEYNUA_USERNAME);
   await page.fill('input[placeholder="Password"]', process.env.KEYNUA_PASSWORD);
@@ -15,9 +21,20 @@ async function ensureLoggedIn(page, context) {
 
   await page.waitForTimeout(5000);
 
-  await context.storageState({ path: SESSION_FILE });
+  const afterLoginUrl = page.url();
+  const afterLoginText = await page.locator("body").innerText();
 
-  console.log("Session refreshed.");
+  if (
+    afterLoginUrl.includes("/auth/login") ||
+    afterLoginText.includes("Sign in") ||
+    afterLoginText.includes("SIGN IN")
+  ) {
+    throw new Error(`[${env.label}] Login failed. Still on login page: ${afterLoginUrl}`);
+  }
+
+  await context.storageState({ path: getSessionFile(env) });
+
+  console.log(`[${env.label}] Session refreshed.`);
 }
 
 module.exports = ensureLoggedIn;

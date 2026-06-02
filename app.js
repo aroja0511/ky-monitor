@@ -113,6 +113,9 @@ async function runMonitor() {
 
             console.log(`\n===== ${env.label} =====`);
             
+            const context = await getContext(browser, env);
+            page = await context.newPage();
+            
             await page.goto(`${env.baseUrl}/liveness-detection-approval/`, {
             	waitUntil: "networkidle"
 			});
@@ -163,6 +166,7 @@ async function runMonitor() {
             console.log(
                 `[${env.label}] Found ${fraudRequests.length} new fraud requests`
             );
+            await context.close();
         }
 
     } catch (error) {
