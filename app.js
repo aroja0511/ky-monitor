@@ -100,14 +100,6 @@ async function runMonitor() {
 
     try {
         browser = await getBrowser();
-        const context = await getContext(browser);
-        page = await context.newPage();
-
-        /* await page.goto("https://admin.keynua.com/liveness-detection-approval/", {
-            waitUntil: "networkidle"
-        });
-
-        await ensureLoggedIn(page, context); */
 
         for (const env of ENVIRONMENTS) {
 
@@ -120,16 +112,13 @@ async function runMonitor() {
             	waitUntil: "networkidle"
 			});
 
-			await ensureLoggedIn(page, context);
+			await ensureLoggedIn(page, context, env);
 
             const livenessRequests = await monitorLiveness(page, env);
 
             for (const request of livenessRequests) {
                 await sendPushover(
-                    `🚨 [${env.label}] New Liveness ${request.location} Request`,
-                    `Created: ${formatKeynuaTime(request.createdAt)} CET
-					Request ID:
-					${request.itemId}`
+                    `🚨 [${env.label}] New Liveness ${request.location} Request`,[`Created: ${formatKeynuaTime(request.createdAt)} CET`, "Request ID:",request.itemId].join("\n")
                 );
             }
 
