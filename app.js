@@ -61,9 +61,28 @@ const DEFAULT_WINDOWS = {
 
 function readScheduleConfig() {
     try {
-        return JSON.parse(
+
+        const today = getMadridDate();
+
+        const overrides = JSON.parse(
             fs.readFileSync(SCHEDULE_FILE, "utf8")
         );
+
+        const activeOverrides = overrides.filter(
+            x => x.endDate >= today
+        );
+
+        if (activeOverrides.length !== overrides.length) {
+
+            console.log(
+                `[SCHEDULE] Removed ${overrides.length - activeOverrides.length} expired override(s)`
+            );
+
+            saveScheduleConfig(activeOverrides);
+        }
+
+        return activeOverrides;
+
     } catch {
         return [];
     }
