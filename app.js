@@ -10,32 +10,34 @@ Node: ${process.version}
 `);
 
 const http = require("http");
+const fs = require("fs");
+const url = require("url");
+const path = require("path");
+const cron = require("node-cron");
 
 const PORT = process.env.PORT || 3000;
+const ADMIN_TOKEN = process.env.ADMIN_TOKEN;
 
-http.createServer((req, res) => {
-    res.writeHead(200, {
-        "Content-Type": "text/plain"
-    });
-    res.end("Keynua Monitor is running");
-}).listen(PORT, () => {
-    console.log(`Health server running on port ${PORT}`);
-});
+const SCHEDULE_FILE = path.join(
+    __dirname,
+    "config",
+    "runtime-schedule.json"
+);
 
-const fs = require("fs");
 fs.mkdirSync("logs", {
     recursive: true
 });
 
-const cron = require("node-cron");
-
 let isRunning = false;
 let skipAlertSent = false;
+
+const sentWindowEvents = new Set();
 
 const {
     getBrowser,
     getContext
 } = require("./src/services/browser");
+
 const ensureLoggedIn = require("./src/services/auth");
 
 const monitorLiveness = require("./src/monitors/liveness");
@@ -46,30 +48,366 @@ const ENVIRONMENTS = require("./src/config/environments");
 
 const sendPushover = require("./src/services/pushover");
 
-async function runMonitor() {
+const DEFAULT_WINDOWS = {
+    morning: {
+        start: "07:00",
+        end: "09:04"
+    },
+    afternoon: {
+        start: "13:00",
+        end: "16:04"
+    }
+};
 
-    const startedAt = Date.now();
+function readScheduleConfig() {
+    try {
+        return JSON.parse(
+            fs.readFileSync(SCHEDULE_FILE, "utf8")
+        );
+    } catch {
+        return [];
+    }
+}
 
-    const madridDay = new Date().toLocaleString("en-US", {
+function saveScheduleConfig(data) {
+    fs.mkdirSync(path.dirname(SCHEDULE_FILE), {
+        recursive: true
+    });
+
+    fs.writeFileSync(
+        SCHEDULE_FILE,
+        JSON.stringify(data, null, 2)
+    );
+}
+
+function parseRequestBody(req) {
+    return new Promise((resolve, reject) => {
+        let body = "";
+
+        req.on("data", chunk => {
+            body += chunk.toString();
+        });
+
+        req.on("end", () => {
+            try {
+                resolve(body ? JSON.parse(body) : {});
+            } catch (error) {
+                reject(error);
+            }
+        });
+    });
+}
+
+function isAuthorized(req) {
+    if (!ADMIN_TOKEN) {
+        return false;
+    }
+
+    return req.headers.authorization === `Bearer ${ADMIN_TOKEN}`;
+}
+
+http.createServer(async (req, res) => {
+    const parsedUrl = url.parse(req.url, true);
+
+    if (
+        req.method === "GET" &&
+        (parsedUrl.pathname === "/" || parsedUrl.pathname === "/health")
+    ) {
+        res.writeHead(200, {
+            "Content-Type": "text/plain"
+        });
+
+        res.end("Keynua Monitor is running");
+        return;
+    }
+
+    if (parsedUrl.pathname.startsWith("/admin")) {
+        if (!isAuthorized(req)) {
+            res.writeHead(401, {
+                "Content-Type": "application/json"
+            });
+
+            res.end(
+                JSON.stringify({
+                    success: false,
+                    error: "Unauthorized"
+                })
+            );
+
+            return;
+        }
+    }
+
+    if (
+        req.method === "GET" &&
+        parsedUrl.pathname === "/admin/monitor-window"
+    ) {
+        const overrides = readScheduleConfig();
+
+        res.writeHead(200, {
+            "Content-Type": "application/json"
+        });
+
+        res.end(JSON.stringify(overrides, null, 2));
+        return;
+    }
+
+    if (
+        req.method === "POST" &&
+        parsedUrl.pathname === "/admin/monitor-window"
+    ) {
+        try {
+            const payload = await parseRequestBody(req);
+
+            if (!payload.startDate) {
+                throw new Error("startDate is required");
+            }
+
+            if (!payload.endDate) {
+                throw new Error("endDate is required");
+            }
+
+            if (!payload.window || !["morning", "afternoon"].includes(payload.window)) {
+                throw new Error("window must be morning or afternoon");
+            }
+
+            if (!payload.range) {
+                throw new Error("range is required. Example: 13-18");
+            }
+
+            const overrides = readScheduleConfig();
+
+            const override = {
+                startDate: payload.startDate,
+                endDate: payload.endDate,
+                window: payload.window,
+                range: payload.range,
+                includeWeekends: payload.includeWeekends || false,
+                createdAt: new Date().toISOString()
+            };
+
+            overrides.push(override);
+
+            saveScheduleConfig(overrides);
+
+            res.writeHead(200, {
+                "Content-Type": "application/json"
+            });
+
+            res.end(
+                JSON.stringify({
+                    success: true,
+                    override
+                }, null, 2)
+            );
+
+            return;
+
+        } catch (error) {
+            res.writeHead(400, {
+                "Content-Type": "application/json"
+            });
+
+            res.end(
+                JSON.stringify({
+                    success: false,
+                    error: error.message
+                }, null, 2)
+            );
+
+            return;
+        }
+    }
+
+    if (
+        req.method === "DELETE" &&
+        parsedUrl.pathname === "/admin/monitor-window"
+    ) {
+        saveScheduleConfig([]);
+
+        res.writeHead(200, {
+            "Content-Type": "application/json"
+        });
+
+        res.end(
+            JSON.stringify({
+                success: true,
+                message: "All runtime schedule overrides were cleared."
+            }, null, 2)
+        );
+
+        return;
+    }
+
+    res.writeHead(404, {
+        "Content-Type": "text/plain"
+    });
+
+    res.end("Not Found");
+
+}).listen(PORT, () => {
+    console.log(`Health server running on port ${PORT}`);
+});
+
+function getMadridParts() {
+    const now = new Date();
+
+    const date = now.toLocaleDateString("en-CA", {
+        timeZone: "Europe/Madrid"
+    });
+
+    const time = now.toLocaleTimeString("en-GB", {
+        timeZone: "Europe/Madrid",
+        hour12: false,
+        hour: "2-digit",
+        minute: "2-digit"
+    });
+
+    const day = now.toLocaleString("en-US", {
         timeZone: "Europe/Madrid",
         weekday: "short"
     });
 
-    if (madridDay === "Sat" || madridDay === "Sun") {
-        console.log("Weekend detected, skipping monitor run");
+    return {
+        date,
+        time,
+        day
+    };
+}
+
+function timeToMinutes(time) {
+    const [hours, minutes] = time.split(":").map(Number);
+    return hours * 60 + minutes;
+}
+
+function normalizeRange(range) {
+    const [startRaw, endRaw] = range.split("-");
+
+    const start =
+        startRaw.includes(":") ? startRaw : `${startRaw.padStart(2, "0")}:00`;
+
+    const endHour =
+        endRaw.includes(":") ? endRaw : `${endRaw.padStart(2, "0")}:04`;
+
+    return {
+        start,
+        end: endHour
+    };
+}
+
+function isDateWithinRange(date, startDate, endDate) {
+    return date >= startDate && date <= endDate;
+}
+
+function getActiveWindowConfig() {
+    const {
+        date,
+        time,
+        day
+    } = getMadridParts();
+
+    const isWeekend =
+        day === "Sat" || day === "Sun";
+
+    const overrides = readScheduleConfig();
+
+    for (const override of overrides) {
+        if (!isDateWithinRange(date, override.startDate, override.endDate)) {
+            continue;
+        }
+
+        if (isWeekend && !override.includeWeekends) {
+            continue;
+        }
+
+        const range = normalizeRange(override.range);
+
+        const nowMinutes = timeToMinutes(time);
+        const startMinutes = timeToMinutes(range.start);
+        const endMinutes = timeToMinutes(range.end);
+
+        if (nowMinutes >= startMinutes && nowMinutes <= endMinutes) {
+            return {
+                source: "override",
+                window: override.window,
+                start: range.start,
+                end: range.end,
+                includeWeekends: override.includeWeekends || false
+            };
+        }
+    }
+
+    if (isWeekend) {
+        return null;
+    }
+
+    for (const [windowName, range] of Object.entries(DEFAULT_WINDOWS)) {
+        const nowMinutes = timeToMinutes(time);
+        const startMinutes = timeToMinutes(range.start);
+        const endMinutes = timeToMinutes(range.end);
+
+        if (nowMinutes >= startMinutes && nowMinutes <= endMinutes) {
+            return {
+                source: "default",
+                window: windowName,
+                start: range.start,
+                end: range.end,
+                includeWeekends: false
+            };
+        }
+    }
+
+    return null;
+}
+
+async function maybeSendWindowEvent(type, activeWindow) {
+    if (!activeWindow) {
         return;
     }
 
+    const {
+        date,
+        time
+    } = getMadridParts();
+
+    const eventKey =
+        `${date}-${activeWindow.window}-${activeWindow.start}-${activeWindow.end}-${activeWindow.source}-${type}`;
+
+    if (sentWindowEvents.has(eventKey)) {
+        return;
+    }
+
+    if (type === "heartbeat" && time === activeWindow.start) {
+        sentWindowEvents.add(eventKey);
+        await sendHeartbeat(activeWindow.window);
+    }
+
+    if (type === "flatline" && time === activeWindow.end) {
+        sentWindowEvents.add(eventKey);
+        await sendFlatline(activeWindow.window);
+    }
+}
+
+async function runMonitor() {
+    const startedAt = Date.now();
+
+    const activeWindow = getActiveWindowConfig();
+
+    if (!activeWindow) {
+        console.log("Outside active monitoring window. Skipping monitor run.");
+        return;
+    }
+
+    await maybeSendWindowEvent("heartbeat", activeWindow);
+
     console.log(
-        `[HEALTH] PID=${process.pid} || Uptime=${Math.round(process.uptime())}s`
+        `[HEALTH] PID=${process.pid} Uptime=${Math.round(process.uptime())}s`
     );
 
     if (isRunning) {
-
         console.log("Previous monitor run still active. Skipping this cycle.");
 
         if (!skipAlertSent) {
-
             skipAlertSent = true;
 
             await sendPushover(
@@ -83,17 +421,18 @@ async function runMonitor() {
 
     isRunning = true;
 
-
-
-    console.log("– Keynua Monitor Running –\n");
+    console.log("Running Keynua monitor...");
 
     const now = new Date().toLocaleString("en-GB", {
         timeZone: "Europe/Madrid"
     });
 
-    console.log(`==========`);
+    console.log(`\n==========`);
     console.log(`Check started: ${now} CET`);
-    console.log(`==========\n`);
+    console.log(
+        `Window: ${activeWindow.window} | ${activeWindow.start}-${activeWindow.end} | ${activeWindow.source}`
+    );
+    console.log(`==========`);
 
     let browser;
     let page;
@@ -102,23 +441,23 @@ async function runMonitor() {
         browser = await getBrowser();
 
         for (const env of ENVIRONMENTS) {
+            console.log(`\n===== ${env.label} =====`);
 
-            console.log(`===== ${env.label} =====`);
-            
             const context = await getContext(browser, env);
             page = await context.newPage();
-            
-            await page.goto(`${env.baseUrl}/liveness-detection-approval/`, {
-            	waitUntil: "networkidle"
-			});
 
-			await ensureLoggedIn(page, context, env);
+            await page.goto(`${env.baseUrl}/liveness-detection-approval/`, {
+                waitUntil: "networkidle"
+            });
+
+            await ensureLoggedIn(page, context, env);
 
             const livenessRequests = await monitorLiveness(page, env);
 
             for (const request of livenessRequests) {
                 await sendPushover(
-                    `🚨 [${env.label}] New Liveness ${request.location} Request`,[`Created: ${formatKeynuaTime(request.createdAt)} CET`, "Request ID:",request.itemId].join("\n")
+                    `🚨 [${env.label}] New Liveness ${request.location} Request`,
+                    `Created: ${formatKeynuaTime(request.createdAt)} CET\nRequest ID:\n${request.itemId}`
                 );
             }
 
@@ -130,8 +469,9 @@ async function runMonitor() {
 
             for (const request of transcribeRequests) {
                 await sendPushover(
-                    `🚨 [${env.label}] New Transcribe Request`,[`Created: ${formatKeynuaTime(request.createdAt)} CET`, "Request ID:",request.itemId].join("\n")
-                    );
+                    `🚨 [${env.label}] New Transcribe Request`,
+                    `Created: ${formatKeynuaTime(request.createdAt)} CET\nRequest ID:\n${request.itemId}`
+                );
             }
 
             console.log(
@@ -142,18 +482,19 @@ async function runMonitor() {
 
             for (const request of fraudRequests) {
                 await sendPushover(
-                    `🚨 [${env.label}] New Fraud Detection Request`,[`Created: ${formatKeynuaTime(request.createdAt)} CET`, "Request ID:",request.itemId].join("\n")
-                    );
+                    `🚨 [${env.label}] New Fraud Detection Request`,
+                    `Created: ${formatKeynuaTime(request.createdAt)} CET\nRequest ID:\n${request.itemId}`
+                );
             }
 
             console.log(
                 `[${env.label}] Found ${fraudRequests.length} new fraud requests`
             );
+
             await context.close();
         }
 
     } catch (error) {
-
         console.error("Monitor error:", error);
 
         if (page) {
@@ -176,94 +517,48 @@ async function runMonitor() {
         );
 
     } finally {
-
         const duration = ((Date.now() - startedAt) / 1000).toFixed(1);
         console.log(`Monitor completed in ${duration}s`);
 
         skipAlertSent = false;
-
         isRunning = false;
 
         if (browser) {
             await browser.close();
         }
+
+        await maybeSendWindowEvent("flatline", activeWindow);
     }
 }
 
-async function sendHeartbeat() {
-
+async function sendHeartbeat(windowName) {
     const now = new Date().toLocaleString("en-GB", {
         timeZone: "Europe/Madrid"
     });
 
     await sendPushover(
         "✅ Keynua Monitor Heartbeat",
-        `Monitor is running.
-		Time: ${now} CET`
+        `Monitor is running.\nWindow: ${windowName}\nTime: ${now} CET`
     );
 }
 
-async function sendFlatline(period) {
-
+async function sendFlatline(windowName) {
     const now = new Date().toLocaleString("en-GB", {
         timeZone: "Europe/Madrid"
     });
 
     await sendPushover(
         "🛑 Keynua Monitor Flatline",
-        `${period} monitoring window ended.
-		Time: ${now} CET`
+        `${windowName} monitoring window ended.\nTime: ${now} CET`
     );
 }
 
 console.log("Keynua monitor scheduler started");
 
-// runMonitor();
-
-cron.schedule("*/2 7-8 * * 1-5", async () => {
+// Broad wake-up schedule.
+// Business schedule is controlled by shouldMonitorNow/getActiveWindowConfig.
+cron.schedule("*/2 7-18 * * *", async () => {
     await runMonitor();
-}, {
-    timezone: "Europe/Madrid"
-});
-
-cron.schedule("0,2,4 9 * * 1-5", async () => {
-    await runMonitor();
-}, {
-    timezone: "Europe/Madrid"
-});
-
-cron.schedule("*/2 13-15 * * 1-5", async () => {
-    await runMonitor();
-}, {
-    timezone: "Europe/Madrid"
-});
-
-cron.schedule("0,2,4 16 * * 1-5", async () => {
-    await runMonitor();
-}, {
-    timezone: "Europe/Madrid"
-});
-
-cron.schedule("0 7 * * 1-5", async () => {
-    await sendHeartbeat();
-}, {
-    timezone: "Europe/Madrid"
-});
-
-cron.schedule("0 13 * * 1-5", async () => {
-    await sendHeartbeat();
-}, {
-    timezone: "Europe/Madrid"
-});
-
-cron.schedule("4 9 * * 1-5", async () => {
-    await sendFlatline("Morning");
-}, {
-    timezone: "Europe/Madrid"
-});
-
-cron.schedule("4 16 * * 1-5", async () => {
-    await sendFlatline("Afternoon");
 }, {
     timezone: "Europe/Madrid"
 });
