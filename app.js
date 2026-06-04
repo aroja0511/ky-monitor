@@ -401,9 +401,9 @@ async function maybeSendWindowEvent(type, activeWindow) {
         await sendHeartbeat(activeWindow.window);
     }
 
-    if (type === "flatline" && time === activeWindow.end) {
-        sentWindowEvents.add(eventKey);
-        await sendFlatline(activeWindow.window);
+    if (type === "flatline" && timeToMinutes(time) >= timeToMinutes(activeWindow.end)) {
+    	sentWindowEvents.add(eventKey);
+    	await sendFlatline(activeWindow.window);
     }
 }
 
@@ -576,8 +576,36 @@ console.log("Keynua monitor scheduler started");
 
 // Broad wake-up schedule.
 // Business schedule is controlled by shouldMonitorNow/getActiveWindowConfig.
-cron.schedule("*/2 7-18 * * *", async () => {
+cron.schedule("*/2 7-8 * * 1-5", async () => {
     await runMonitor();
+}, {
+    timezone: "Europe/Madrid"
+});
+
+cron.schedule("0,2,4 9 * * 1-5", async () => {
+    await runMonitor();
+}, {
+    timezone: "Europe/Madrid"
+});
+
+cron.schedule("*/2 13-15 * * 1-5", async () => {
+    await runMonitor();
+}, {
+    timezone: "Europe/Madrid"
+});
+
+cron.schedule("0,2,4 16 * * 1-5", async () => {
+    await runMonitor();
+}, {
+    timezone: "Europe/Madrid"
+});
+
+cron.schedule("*/2 16-23 * * 1-5", async () => {
+    const activeWindow = getActiveWindowConfig();
+
+    if (activeWindow && activeWindow.source === "override") {
+        await runMonitor();
+    }
 }, {
     timezone: "Europe/Madrid"
 });
