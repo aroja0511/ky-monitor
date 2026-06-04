@@ -19,9 +19,8 @@ const PORT = process.env.PORT || 3000;
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN;
 
 const SCHEDULE_FILE = path.join(
-    __dirname,
-    "config",
-    "runtime-schedule.json"
+    "/home/u293979929",
+    "keynua-runtime-schedule.json"
 );
 
 fs.mkdirSync("logs", {
@@ -62,7 +61,7 @@ const DEFAULT_WINDOWS = {
 function readScheduleConfig() {
     try {
 
-        const today = getMadridDate();
+        const today = getMadridParts().date;
 
         const overrides = JSON.parse(
             fs.readFileSync(SCHEDULE_FILE, "utf8")
