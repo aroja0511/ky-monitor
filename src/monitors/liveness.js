@@ -1,6 +1,8 @@
 const fs = require("fs");
 const path = require("path");
 
+const ensureLoggedIn = require("../services/auth");
+
 function getSeenFile(env) {
     return `state/${env.key}-liveness.json`;
 }
@@ -51,6 +53,12 @@ async function monitorLiveness(page, env) {
     await page.goto(`${env.baseUrl}/liveness-detection-approval/`, {
         waitUntil: "networkidle"
     });
+    
+    await ensureLoggedIn(page, page.context(), env);
+
+  	if (page.url().includes("/auth/login")) {
+  		throw new Error(`[${env.label}] Still on login page while checking liveness.`);
+  	}
 
     await page.waitForTimeout(7000);
 

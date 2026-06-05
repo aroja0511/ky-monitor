@@ -1,6 +1,8 @@
 const fs = require("fs");
 const path = require("path");
 
+const ensureLoggedIn = require("../services/auth");
+
 function getSeenFile(env) {
   return `state/${env.key}-fraud.json`;
 }
@@ -24,6 +26,12 @@ async function monitorFraud(page, env) {
   await page.goto(`${env.baseUrl}/fraud-detection/`, {
     waitUntil: "networkidle"
   });
+  
+  await ensureLoggedIn(page, page.context(), env);
+
+  if (page.url().includes("/auth/login")) {
+  		throw new Error(`[${env.label}] Still on login page while checking liveness.`);
+  }
 
   await page.waitForTimeout(7000);
 

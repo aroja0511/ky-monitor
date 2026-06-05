@@ -9,6 +9,18 @@ Node: ${process.version}
 =================================
 `);
 
+process.on("SIGTERM", () => {
+    console.log(`[SHUTDOWN] SIGTERM received. PID=${process.pid}`);
+});
+
+process.on("SIGINT", () => {
+    console.log(`[SHUTDOWN] SIGINT received. PID=${process.pid}`);
+});
+
+process.on("exit", (code) => {
+    console.log(`[SHUTDOWN] Process exiting. Code=${code}. PID=${process.pid}`);
+});
+
 const http = require("http");
 const fs = require("fs");
 const url = require("url");
@@ -23,9 +35,28 @@ const SCHEDULE_FILE = path.join(
     "keynua-runtime-schedule.json"
 );
 
+const RUN_STATE_FILE = path.join(
+    "/home/u293979929",
+    "keynua-run-state.json"
+);
+
 fs.mkdirSync("logs", {
     recursive: true
 });
+
+try {
+    if (fs.existsSync(RUN_STATE_FILE)) {
+        const previousRun = JSON.parse(fs.readFileSync(RUN_STATE_FILE, "utf8"));
+
+        if (previousRun.status === "running") {
+            console.log(
+                `[RECOVERY] Previous monitor run may have been interrupted. PID=${previousRun.pid}, startedAt=${previousRun.startedAt}`
+            );
+        }
+    }
+} catch (error) {
+    console.log(`[RECOVERY] Could not read previous run state: ${error.message}`);
+}
 
 let isRunning = false;
 let skipAlertSent = false;
@@ -60,7 +91,6 @@ const DEFAULT_WINDOWS = {
 
 function readScheduleConfig() {
     try {
-
         const today = getMadridParts().date;
 
         const overrides = JSON.parse(
@@ -72,7 +102,6 @@ function readScheduleConfig() {
         );
 
         if (activeOverrides.length !== overrides.length) {
-
             console.log(
                 `[SCHEDULE] Removed ${overrides.length - activeOverrides.length} expired override(s)`
             );
@@ -401,8 +430,8 @@ async function maybeSendWindowEvent(type, activeWindow) {
     }
 
     if (type === "flatline" && timeToMinutes(time) >= timeToMinutes(activeWindow.end)) {
-    	sentWindowEvents.add(eventKey);
-    	await sendFlatline(activeWindow.window);
+        sentWindowEvents.add(eventKey);
+        await sendFlatline(activeWindow.window);
     }
 }
 
@@ -439,6 +468,15 @@ async function runMonitor() {
 
     isRunning = true;
 
+    fs.writeFileSync(
+        RUN_STATE_FILE,
+        JSON.stringify({
+            status: "running",
+            pid: process.pid,
+            startedAt: new Date().toISOString()
+        }, null, 2)
+    );
+
     console.log("Running Keynua monitor...");
 
     const now = new Date().toLocaleString("en-GB", {
@@ -462,58 +500,62 @@ async function runMonitor() {
             console.log(`\n===== ${env.label} =====`);
 
             const context = await getContext(browser, env);
-            page = await context.newPage();
 
-            await page.goto(`${env.baseUrl}/liveness-detection-approval/`, {
-                waitUntil: "networkidle"
-            });
+            try {
+                page = await context.newPage();
 
-            await ensureLoggedIn(page, context, env);
-            
-            if (page.url().includes("/auth/login")) {
-            	throw new Error(`[${env.label}] Still on login page after ensureLoggedIn.`);
-            }
+                await page.goto(`${env.baseUrl}/liveness-detection-approval/`, {
+                    waitUntil: "networkidle"
+                });
 
-            const livenessRequests = await monitorLiveness(page, env);
+                await ensureLoggedIn(page, context, env);
 
-            for (const request of livenessRequests) {
-                await sendPushover(
-                    `🚨 [${env.label}] New Liveness ${request.location} Request`,
-                    `Created: ${formatKeynuaTime(request.createdAt)} CET\nRequest ID:\n${request.itemId}`
+                if (page.url().includes("/auth/login")) {
+                    throw new Error(`[${env.label}] Still on login page after ensureLoggedIn.`);
+                }
+
+                const livenessRequests = await monitorLiveness(page, env);
+
+                for (const request of livenessRequests) {
+                    await sendPushover(
+                        `🚨 [${env.label}] New Liveness ${request.location} Request`,
+                        `Created: ${formatKeynuaTime(request.createdAt)} CET\nRequest ID:\n${request.itemId}`
+                    );
+                }
+
+                console.log(
+                    `[${env.label}] Found ${livenessRequests.length} new liveness requests`
                 );
-            }
 
-            console.log(
-                `[${env.label}] Found ${livenessRequests.length} new liveness requests`
-            );
+                const transcribeRequests = await monitorTranscribe(page, env);
 
-            const transcribeRequests = await monitorTranscribe(page, env);
+                for (const request of transcribeRequests) {
+                    await sendPushover(
+                        `🚨 [${env.label}] New Transcribe Request`,
+                        `Created: ${formatKeynuaTime(request.createdAt)} CET\nRequest ID:\n${request.itemId}`
+                    );
+                }
 
-            for (const request of transcribeRequests) {
-                await sendPushover(
-                    `🚨 [${env.label}] New Transcribe Request`,
-                    `Created: ${formatKeynuaTime(request.createdAt)} CET\nRequest ID:\n${request.itemId}`
+                console.log(
+                    `[${env.label}] Found ${transcribeRequests.length} new transcribe requests`
                 );
-            }
 
-            console.log(
-                `[${env.label}] Found ${transcribeRequests.length} new transcribe requests`
-            );
+                const fraudRequests = await monitorFraud(page, env);
 
-            const fraudRequests = await monitorFraud(page, env);
+                for (const request of fraudRequests) {
+                    await sendPushover(
+                        `🚨 [${env.label}] New Fraud Detection Request`,
+                        `Created: ${formatKeynuaTime(request.createdAt)} CET\nRequest ID:\n${request.itemId}`
+                    );
+                }
 
-            for (const request of fraudRequests) {
-                await sendPushover(
-                    `🚨 [${env.label}] New Fraud Detection Request`,
-                    `Created: ${formatKeynuaTime(request.createdAt)} CET\nRequest ID:\n${request.itemId}`
+                console.log(
+                    `[${env.label}] Found ${fraudRequests.length} new fraud requests`
                 );
+
+            } finally {
+                await context.close().catch(() => {});
             }
-
-            console.log(
-                `[${env.label}] Found ${fraudRequests.length} new fraud requests`
-            );
-
-            await context.close();
         }
 
     } catch (error) {
@@ -550,6 +592,16 @@ async function runMonitor() {
         }
 
         await maybeSendWindowEvent("flatline", activeWindow);
+
+        fs.writeFileSync(
+            RUN_STATE_FILE,
+            JSON.stringify({
+                status: "completed",
+                pid: process.pid,
+                startedAt: new Date(startedAt).toISOString(),
+                completedAt: new Date().toISOString()
+            }, null, 2)
+        );
     }
 }
 
