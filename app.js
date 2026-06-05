@@ -469,6 +469,10 @@ async function runMonitor() {
             });
 
             await ensureLoggedIn(page, context, env);
+            
+            if (page.url().includes("/auth/login")) {
+            	throw new Error(`[${env.label}] Still on login page after ensureLoggedIn.`);
+            }
 
             const livenessRequests = await monitorLiveness(page, env);
 
