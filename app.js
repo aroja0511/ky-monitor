@@ -30,13 +30,19 @@ const cron = require("node-cron");
 const PORT = process.env.PORT || 3000;
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN;
 
+const DATA_DIR = process.env.DATA_DIR || path.join(process.cwd(), "data");
+
+fs.mkdirSync(DATA_DIR, {
+    recursive: true
+});
+
 const SCHEDULE_FILE = path.join(
-    "/home/u293979929",
+    DATA_DIR,
     "keynua-runtime-schedule.json"
 );
 
 const RUN_STATE_FILE = path.join(
-    "/home/u293979929",
+    DATA_DIR,
     "keynua-run-state.json"
 );
 
