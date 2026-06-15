@@ -11,4 +11,9 @@
     "node-cron": "^4.2.1",
     "playwright": "^1.60.0"
   }
+  "scripts": {
+  "start": "node app.js",
+  "postinstall": "npx playwright install chromium"
+  }
 }
+
