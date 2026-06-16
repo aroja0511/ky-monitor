@@ -2,6 +2,7 @@ const fs = require("fs");
 const path = require("path");
 
 const ensureLoggedIn = require("../services/auth");
+const waitForKeynuaReady = require("../services/waitForKeynuaReady");
 
 function getSeenFile(env) {
   return `state/${env.key}-fraud.json`;
@@ -30,10 +31,11 @@ async function monitorFraud(page, env) {
   await ensureLoggedIn(page, page.context(), env);
 
   if (page.url().includes("/auth/login")) {
-  		throw new Error(`[${env.label}] Still on login page while checking liveness.`);
+  		throw new Error(`[${env.label}] Still on login page while checking fraud.`);
   }
 
-  await page.waitForTimeout(7000);
+  //await page.waitForTimeout(7000);
+  await waitForKeynuaReady(page, env, "Fraud");
 
   const pageText = await page.locator("body").innerText();
 

@@ -2,6 +2,7 @@ const fs = require("fs");
 const path = require("path");
 
 const ensureLoggedIn = require("../services/auth");
+const waitForKeynuaReady = require("../services/waitForKeynuaReady");
 
 function getSeenFile(env) {
     return `state/${env.key}-liveness.json`;
@@ -60,7 +61,8 @@ async function monitorLiveness(page, env) {
   		throw new Error(`[${env.label}] Still on login page while checking liveness.`);
   	}
 
-    await page.waitForTimeout(7000);
+    //await page.waitForTimeout(7000);
+    await waitForKeynuaReady(page, env, "Liveness high priority");
 
     let rows = [];
 
@@ -70,7 +72,8 @@ async function monitorLiveness(page, env) {
 
     if (await lowPriorityTab.count()) {
         await lowPriorityTab.click();
-        await page.waitForTimeout(5000);
+        //await page.waitForTimeout(5000);
+        await waitForKeynuaReady(page, env, "Liveness high priority");
         rows = rows.concat(await extractLivenessRows(page, "Prioridad Baja"));
     }
 
