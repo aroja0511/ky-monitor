@@ -34,8 +34,8 @@ async function monitorFraud(page, env) {
   		throw new Error(`[${env.label}] Still on login page while checking fraud.`);
   }
 
-  //await page.waitForTimeout(7000);
-  await waitForKeynuaReady(page, env, "Fraud");
+  await page.waitForTimeout(5000);
+  //await waitForKeynuaReady(page, env, "Fraud");
 
   const pageText = await page.locator("body").innerText();
 

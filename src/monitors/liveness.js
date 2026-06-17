@@ -61,22 +61,56 @@ async function monitorLiveness(page, env) {
   		throw new Error(`[${env.label}] Still on login page while checking liveness.`);
   	}
 
-    //await page.waitForTimeout(7000);
-    await waitForKeynuaReady(page, env, "Liveness high priority");
+    await page.waitForTimeout(5000);
+    //await waitForKeynuaReady(page, env, "Liveness high priority");
 
     let rows = [];
 
     rows = rows.concat(await extractLivenessRows(page, "Prioridad Alta"));
 
-    const lowPriorityTab = page.locator("text=Prioridad baja");
+ /*    const lowPriorityTab = page.locator("text=Prioridad baja");
 
     if (await lowPriorityTab.count()) {
         await lowPriorityTab.click();
         //await page.waitForTimeout(5000);
-        await waitForKeynuaReady(page, env, "Liveness high priority");
+        await waitForKeynuaReady(page, env, "Liveness low priority");
         rows = rows.concat(await extractLivenessRows(page, "Prioridad Baja"));
-    }
+    } */
+    
+    
+    const lowPriorityTab = page.getByText(
+    "Prioridad baja",
+    { exact: true }
+	);
 
+	const hasLowPriorityTab = await lowPriorityTab
+    	.isVisible()
+    	.catch(() => false);
+
+	if (hasLowPriorityTab) {
+    	console.log(`[${env.label}] Clicking low priority tab`);
+
+    	await lowPriorityTab.click();
+
+    	await page.waitForTimeout(5000);
+    	/* await waitForKeynuaReady(
+        	page,
+        	env,
+       		"Liveness low priority"
+    	);
+ */
+    	rows = rows.concat(
+       		await extractLivenessRows(
+            	page,
+            	"Prioridad Baja"
+        	)
+    	);
+	} else {
+    	console.warn(
+        	`[${env.label}] Liveness low priority tab not found.`
+    	);
+	}
+        
     const uniqueRows = Array.from(
         new Map(rows.map(row => [row.itemId, row])).values()
     );

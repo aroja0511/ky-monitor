@@ -36,8 +36,8 @@ async function monitorTranscribe(page, env) {
   		throw new Error(`[${env.label}] Still on login page while checking transcribe.`);
   	}
 
-    //await page.waitForTimeout(7000);
-    await waitForKeynuaReady(page, env, "Transcribe");
+    await page.waitForTimeout(5000);
+    //await waitForKeynuaReady(page, env, "Transcribe");
 
     const pageText = await page.locator("body").innerText();
  

@@ -620,6 +620,8 @@ async function sendHeartbeat(windowName) {
         "✅ Keynua Monitor Heartbeat",
         `Monitor is running.\nWindow: ${windowName}\nTime: ${now} CET`
     );
+    
+    console.log(`[HEARTBEAT] Sent for ${windowName} window at ${now} CET`);
 }
 
 async function sendFlatline(windowName) {
@@ -631,6 +633,8 @@ async function sendFlatline(windowName) {
         "🛑 Keynua Monitor Flatline",
         `${windowName} monitoring window ended.\nTime: ${now} CET`
     );
+    
+    console.log(`[FLATLINE] Sent for ${windowName} window at ${now} CET`);
 }
 
 console.log("Keynua monitor scheduler started");
