@@ -2,7 +2,7 @@ const fs = require("fs");
 const path = require("path");
 
 const ensureLoggedIn = require("../services/auth");
-const waitForKeynuaReady = require("../services/waitForKeynuaReady");
+//const waitForKeynuaReady = require("../services/waitForKeynuaReady");
 
 function getSeenFile(env) {
   return `state/${env.key}-fraud.json`;
@@ -34,10 +34,29 @@ async function monitorFraud(page, env) {
   		throw new Error(`[${env.label}] Still on login page while checking fraud.`);
   }
 
-  await page.waitForTimeout(5000);
+/*   await page.waitForTimeout(5000);
   //await waitForKeynuaReady(page, env, "Fraud");
 
-  const pageText = await page.locator("body").innerText();
+  const pageText = await page.locator("body").innerText(); */
+  
+  await page.waitForFunction(() => {
+    const text = document.body.innerText || "";
+
+    const hasRow =
+        /[a-z]+:[a-f0-9-]+:item:\d+:\d+/i.test(text) ||
+        /\d{2}\/\d{2}\/\d{4}\s\d{2}:\d{2}:\d{2}/.test(text);
+
+    const isEmpty =
+        /There are no pending frauds/i.test(text);
+
+    return hasRow || isEmpty;
+   }, {
+   	timeout: 5000
+   }).catch(() => {
+   	console.warn("[FRAUD] Readiness timeout. Falling back to current page content.");
+   	});
+   	
+   	const pageText = await page.locator("body").innerText();
 
   const itemIdMatches = pageText.match(
     /[a-z]+:[a-f0-9-]+:item:\d+:\d+/gi
