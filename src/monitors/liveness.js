@@ -60,28 +60,8 @@ async function monitorLiveness(page, env) {
   	if (page.url().includes("/auth/login")) {
   		throw new Error(`[${env.label}] Still on login page while checking liveness.`);
   	}
-	
-	const spinnerVisible = await page
-		.locator(".MuiCircularProgress-root")
-    	.first()
-    	.isVisible()
-    	.catch(() => false);
-
-	console.log(
-    	`[${env.label}] Liveness High-P spinner visible before wait: ${spinnerVisible}`
-	);
     
-    await page.waitForTimeout(5000);
-    
-    const spinnerAfter = await page
-    .locator(".MuiCircularProgress-root")
-    .first()
-    .isVisible()
-    .catch(() => false);
-
-	console.log(
-    	`[${env.label}] Liveness High-P spinner AFTER wait: ${spinnerAfter}`
-	);
+    await page.waitForTimeout(4500);
     //await waitForKeynuaReady(page, env, "Liveness high priority");
 
     let rows = [];
@@ -111,30 +91,11 @@ async function monitorLiveness(page, env) {
     	console.log(`[${env.label}] Clicking low priority tab`);
 
     	await lowPriorityTab.click();
-    	
-    	const spinnerVisible = await page
-			.locator(".MuiCircularProgress-root")
-    		.first()
-    		.isVisible()
-    		.catch(() => false);
-
-		console.log(
-    		`[${env.label}] Liveness Low-P spinner visible before wait: ${spinnerVisible}`
-		);
+   
 
 
-    	await page.waitForTimeout(5000);
-    	
-    	
-    	const spinnerAfter = await page
-    		.locator(".MuiCircularProgress-root")
-   			.first()
-    		.isVisible()
-    		.catch(() => false);
-
-		console.log(
-    		`[${env.label}] Liveness Low-P spinner AFTER wait: ${spinnerAfter}`
-		);
+    	await page.waitForTimeout(4000);
+ 
 
     	/* await waitForKeynuaReady(
         	page,

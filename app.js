@@ -23,7 +23,6 @@ process.on("exit", (code) => {
 
 const http = require("http");
 const fs = require("fs");
-const url = require("url");
 const path = require("path");
 const cron = require("node-cron");
 
@@ -160,8 +159,12 @@ function isAuthorized(req) {
 }
 
 http.createServer(async (req, res) => {
-    const parsedUrl = url.parse(req.url, true);
 
+    const parsedUrl = new URL(
+    	req.url,
+    	`http://${req.headers.host}`
+    );
+    
     if (
         req.method === "GET" &&
         (parsedUrl.pathname === "/" || parsedUrl.pathname === "/health")
