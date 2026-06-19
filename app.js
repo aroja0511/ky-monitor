@@ -487,7 +487,7 @@ async function runMonitor() {
     const activeWindow = getActiveWindowConfig();
 
     if (!activeWindow) {
-        console.log("Outside active monitoring window. Skipping monitor run.");
+        //console.log("Outside active monitoring window. Skipping monitor run.");
         return;
     }
 
