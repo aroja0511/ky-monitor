@@ -24,7 +24,7 @@ process.on("exit", (code) => {
 const http = require("http");
 const fs = require("fs");
 const path = require("path");
-const cron = require("node-cron");
+//const cron = require("node-cron");
 
 const PORT = process.env.PORT || 3000;
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN;
@@ -232,6 +232,13 @@ http.createServer(async (req, res) => {
             }
 
             const overrides = readScheduleConfig();
+            
+            const existingIndex = overrides.findIndex(
+    		x =>
+        		x.startDate === payload.startDate &&
+        		x.endDate === payload.endDate &&
+	       		x.window === payload.window
+			);
 
             const override = {
                 startDate: payload.startDate,
@@ -239,10 +246,27 @@ http.createServer(async (req, res) => {
                 window: payload.window,
                 range: payload.range,
                 includeWeekends: payload.includeWeekends || false,
-                createdAt: new Date().toISOString()
+                createdAt:
+                	existingIndex !== -1
+						? overrides[existingIndex].createdAt
+            			: new Date().toISOString(),
+				updatedAt: new Date().toISOString()
             };
+            
+            let action = "created";
+            
+            if (existingIndex !== -1) {
+            	overrides[existingIndex] = override;
+            	action = "updated";
+            } else {
+            	overrides.push(override);
+            }
+            
+            console.log(
+				`[SCHEDULE] Override ${action}: ${payload.startDate} → ${payload.endDate} (${payload.window}) ${payload.range}`
+			);
 
-            overrides.push(override);
+            //overrides.push(override);
 
             saveScheduleConfig(overrides);
 
@@ -253,6 +277,7 @@ http.createServer(async (req, res) => {
             res.end(
                 JSON.stringify({
                     success: true,
+                    action,
                     override
                 }, null, 2)
             );
@@ -433,16 +458,28 @@ async function maybeSendWindowEvent(type, activeWindow) {
         return;
     }
 
-    if (type === "heartbeat" && time === activeWindow.start) {
-        sentWindowEvents.add(eventKey);
-        await sendHeartbeat(activeWindow.window);
-    }
+	const nowMinutes = timeToMinutes(time);
+	const startMinutes = timeToMinutes(activeWindow.start);
+	const endMinutes = timeToMinutes(activeWindow.end);
 
-    if (type === "flatline" && timeToMinutes(time) >= timeToMinutes(activeWindow.end)) {
-        sentWindowEvents.add(eventKey);
-        await sendFlatline(activeWindow.window);
-    }
-}
+	if (
+    	type === "heartbeat" &&
+    	nowMinutes >= startMinutes &&
+    	nowMinutes <= startMinutes + 1
+	) {
+    	sentWindowEvents.add(eventKey);
+    	await sendHeartbeat(activeWindow.window);
+	}
+
+	if (
+    	type === "flatline" &&
+    	nowMinutes >= endMinutes &&
+    	nowMinutes <= endMinutes + 1
+	) {
+    	sentWindowEvents.add(eventKey);
+    	await sendFlatline(activeWindow.window);
+	}
+	}
 
 async function runMonitor() {
     const startedAt = Date.now();
@@ -461,7 +498,7 @@ async function runMonitor() {
     );
 
     if (isRunning) {
-        console.log("Previous monitor run still active. Skipping this cycle.");
+        console.log(`[SKIP] Previous monitor run still active. PID=${process.pid}`);
 
         if (!skipAlertSent) {
             skipAlertSent = true;
@@ -591,7 +628,7 @@ async function runMonitor() {
 
     } finally {
         const duration = ((Date.now() - startedAt) / 1000).toFixed(1);
-        console.log(`Monitor completed in ${duration}s`);
+        console.log(`[PERF] Monitor completed in ${duration}s`);
 
         skipAlertSent = false;
         isRunning = false;
@@ -644,39 +681,54 @@ console.log("Keynua monitor scheduler started");
 
 // Broad wake-up schedule.
 // Business schedule is controlled by shouldMonitorNow/getActiveWindowConfig.
-cron.schedule("*/2 7-8 * * 1-5", async () => {
-    await runMonitor();
-}, {
-    timezone: "Europe/Madrid"
-});
+//cron.schedule("*/2 7-8 * * 1-5", async () => {
+//    await runMonitor();
+//}, {
+//    timezone: "Europe/Madrid"
+//});
+//
+//cron.schedule("0,2,4 9 * * 1-5", async () => {
+//    await runMonitor();
+//}, {
+//    timezone: "Europe/Madrid"
+//});
+//
+//cron.schedule("*/2 13-15 * * 1-5", async () => {
+//    await runMonitor();
+//}, {
+//    timezone: "Europe/Madrid"
+//});
+//
+//cron.schedule("0,2,4 16 * * 1-5", async () => {
+//    await runMonitor();
+//}, {
+//    timezone: "Europe/Madrid"
+//});
+//
+//cron.schedule("*/2 16-23 * * 1-5", async () => {
+//    const activeWindow = getActiveWindowConfig();
+//
+//    if (activeWindow && activeWindow.source === "override") {
+//        await runMonitor();
+//    }
+//}, {
+//    timezone: "Europe/Madrid"
+//});
 
-cron.schedule("0,2,4 9 * * 1-5", async () => {
-    await runMonitor();
-}, {
-    timezone: "Europe/Madrid"
-});
 
-cron.schedule("*/2 13-15 * * 1-5", async () => {
-    await runMonitor();
-}, {
-    timezone: "Europe/Madrid"
-});
+console.log(
+    "[SCHEDULER] Running every 90 seconds"
+);
 
-cron.schedule("0,2,4 16 * * 1-5", async () => {
-    await runMonitor();
-}, {
-    timezone: "Europe/Madrid"
-});
+runMonitor().catch(console.error);
 
-cron.schedule("*/2 16-23 * * 1-5", async () => {
-    const activeWindow = getActiveWindowConfig();
-
-    if (activeWindow && activeWindow.source === "override") {
+setInterval(async () => {
+    try {
         await runMonitor();
+    } catch (error) {
+        console.error("Scheduler error:", error);
     }
-}, {
-    timezone: "Europe/Madrid"
-});
+}, 90 * 1000);
 
 function formatKeynuaTime(createdAt) {
     if (!createdAt || createdAt === "Unknown") return createdAt;
