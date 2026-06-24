@@ -66,6 +66,11 @@ try {
 let isRunning = false;
 let skipAlertSent = false;
 
+let currentRunStartedAt = null;
+
+const STALE_RUN_THRESHOLD_MS = 120 * 1000;
+const MONITOR_RUN_TIMEOUT_MS = 120 * 1000;
+
 const sentWindowEvents = new Set();
 
 const {
@@ -481,6 +486,21 @@ async function maybeSendWindowEvent(type, activeWindow) {
 	}
 	}
 
+function withTimeout(promise, ms, label) {
+    let timeout;
+
+    const timeoutPromise = new Promise((_, reject) => {
+        timeout = setTimeout(() => {
+            reject(new Error(`${label} timed out after ${ms / 1000}s`));
+        }, ms);
+    });
+
+    return Promise.race([
+        promise.finally(() => clearTimeout(timeout)),
+        timeoutPromise
+    ]);
+}
+
 async function runMonitor() {
     const startedAt = Date.now();
 
@@ -498,14 +518,35 @@ async function runMonitor() {
     );
 
     if (isRunning) {
-        console.log(`[SKIP] Previous monitor run still active. PID=${process.pid}`);
+    	const runningFor = currentRunStartedAt
+        ? Date.now() - currentRunStartedAt
+        : 0;
+        
+        console.log(`[SKIP] Previous monitor run still active for ${(runningFor / 1000).toFixed(1)}s. PID=${process.pid}`);
+        
+        if (runningFor > STALE_RUN_THRESHOLD_MS) {
+        	console.warn(
+            	`[RECOVERY] Stale monitor run detected after ${(runningFor / 1000).toFixed(1)}s. Resetting run lock.`
+        	);
+
+        	isRunning = false;
+        	currentRunStartedAt = null;
+        	skipAlertSent = false;
+        	
+        	await sendPushover(
+        		"⚠️ Keynua Monitor Recovered",
+       	 		`A stale monitor run was detected after ${(runningFor / 1000).toFixed(1)}s. The run lock was reset and the next cycle will continue normally.`
+    		);
+    		
+    		return;
+    	}
 
         if (!skipAlertSent) {
             skipAlertSent = true;
 
             await sendPushover(
                 "⚠️ Keynua Monitor Delayed",
-                "A monitor cycle was skipped because the previous run is still active."
+                `A monitor cycle was skipped because the previous run is still active for ${(runningFor / 1000).toFixed(1)}s`
             );
         }
 
@@ -513,6 +554,7 @@ async function runMonitor() {
     }
 
     isRunning = true;
+    currentRunStartedAt = Date.now();
 
     fs.writeFileSync(
         RUN_STATE_FILE,
@@ -551,7 +593,8 @@ async function runMonitor() {
                 page = await context.newPage();
 
                 await page.goto(`${env.baseUrl}/liveness-detection-approval/`, {
-                    waitUntil: "networkidle"
+                    waitUntil: "domcontentloaded",
+    				timeout: 30000
                 });
 
                 await ensureLoggedIn(page, context, env);
@@ -631,7 +674,8 @@ async function runMonitor() {
         console.log(`[PERF] Monitor completed in ${duration}s`);
 
         skipAlertSent = false;
-        isRunning = false;
+		isRunning = false;
+		currentRunStartedAt = null;
 
         if (browser) {
             await browser.close();
@@ -679,52 +723,23 @@ async function sendFlatline(windowName) {
 
 console.log("Keynua monitor scheduler started");
 
-// Broad wake-up schedule.
-// Business schedule is controlled by shouldMonitorNow/getActiveWindowConfig.
-//cron.schedule("*/2 7-8 * * 1-5", async () => {
-//    await runMonitor();
-//}, {
-//    timezone: "Europe/Madrid"
-//});
-//
-//cron.schedule("0,2,4 9 * * 1-5", async () => {
-//    await runMonitor();
-//}, {
-//    timezone: "Europe/Madrid"
-//});
-//
-//cron.schedule("*/2 13-15 * * 1-5", async () => {
-//    await runMonitor();
-//}, {
-//    timezone: "Europe/Madrid"
-//});
-//
-//cron.schedule("0,2,4 16 * * 1-5", async () => {
-//    await runMonitor();
-//}, {
-//    timezone: "Europe/Madrid"
-//});
-//
-//cron.schedule("*/2 16-23 * * 1-5", async () => {
-//    const activeWindow = getActiveWindowConfig();
-//
-//    if (activeWindow && activeWindow.source === "override") {
-//        await runMonitor();
-//    }
-//}, {
-//    timezone: "Europe/Madrid"
-//});
-
-
 console.log(
     "[SCHEDULER] Running every 90 seconds"
 );
 
-runMonitor().catch(console.error);
+withTimeout(
+    runMonitor(),
+    MONITOR_RUN_TIMEOUT_MS,
+    "Initial monitor run"
+).catch(console.error);
 
 setInterval(async () => {
     try {
-        await runMonitor();
+        await withTimeout(
+            runMonitor(),
+            MONITOR_RUN_TIMEOUT_MS,
+            "Scheduled monitor run"
+        );
     } catch (error) {
         console.error("Scheduler error:", error);
     }

@@ -52,7 +52,8 @@ async function extractLivenessRows(page, location) {
 
 async function monitorLiveness(page, env) {
     await page.goto(`${env.baseUrl}/liveness-detection-approval/`, {
-        waitUntil: "networkidle"
+        waitUntil: "domcontentloaded",
+		timeout: 30000
     });
     
     await ensureLoggedIn(page, page.context(), env);
