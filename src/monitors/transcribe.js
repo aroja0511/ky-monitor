@@ -27,7 +27,8 @@ function saveSeen(env, data) {
 
 async function monitorTranscribe(page, env) {
     await page.goto(`${env.baseUrl}/transcribe/`, {
-        waitUntil: "networkidle"
+        waitUntil: "domcontentloaded",
+		timeout: 30000
     });
     
     await ensureLoggedIn(page, page.context(), env);

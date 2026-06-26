@@ -529,16 +529,12 @@ async function runMonitor() {
             	`[RECOVERY] Stale monitor run detected after ${(runningFor / 1000).toFixed(1)}s. Resetting run lock.`
         	);
 
-        	isRunning = false;
-        	currentRunStartedAt = null;
-        	skipAlertSent = false;
-        	
         	await sendPushover(
-        		"⚠️ Keynua Monitor Recovered",
-       	 		`A stale monitor run was detected after ${(runningFor / 1000).toFixed(1)}s. The run lock was reset and the next cycle will continue normally.`
+        		"⚠️ Keynua Monitor Restarting",
+				`A stale monitor run was detected after ${(runningFor / 1000).toFixed(1)}s.\nRestarting the application to clear stuck browser resources.`
     		);
-    		
-    		return;
+
+    		process.exit(1);
     	}
 
         if (!skipAlertSent) {
@@ -735,14 +731,23 @@ withTimeout(
 
 setInterval(async () => {
     try {
-        await withTimeout(
-            runMonitor(),
-            MONITOR_RUN_TIMEOUT_MS,
-            "Scheduled monitor run"
-        );
-    } catch (error) {
-        console.error("Scheduler error:", error);
-    }
+    	await withTimeout(
+        	runMonitor(),
+        	MONITOR_RUN_TIMEOUT_MS,
+        	"Scheduled monitor run"
+    	);
+	} catch (error) {
+    	console.error("Scheduler error:", error);
+
+    	if (String(error.message || "").includes("timed out")) {
+        	await sendPushover(
+            	"⚠️ Keynua Monitor Restarting",
+            	"Monitor execution exceeded the timeout. Restarting the application."
+        	);
+
+        	process.exit(1);
+    	}
+	}
 }, 90 * 1000);
 
 function formatKeynuaTime(createdAt) {

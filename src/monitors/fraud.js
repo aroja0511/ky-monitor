@@ -25,7 +25,8 @@ function saveSeen(env, data) {
 
 async function monitorFraud(page, env) {
   await page.goto(`${env.baseUrl}/fraud-detection/`, {
-    waitUntil: "networkidle"
+    waitUntil: "domcontentloaded",
+	timeout: 30000
   });
   
   await ensureLoggedIn(page, page.context(), env);
