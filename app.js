@@ -588,7 +588,7 @@ async function runMonitor() {
             try {
                 page = await context.newPage();
 
-                await page.goto(`${env.baseUrl}/liveness-detection-approval/`, {
+                /* await page.goto(`${env.baseUrl}/liveness-detection-approval/`, {
                     waitUntil: "domcontentloaded",
     				timeout: 30000
                 });
@@ -598,7 +598,7 @@ async function runMonitor() {
                 if (page.url().includes("/auth/login")) {
                     throw new Error(`[${env.label}] Still on login page after ensureLoggedIn.`);
                 }
-
+ */
                 const livenessRequests = await monitorLiveness(page, env);
 
                 for (const request of livenessRequests) {
