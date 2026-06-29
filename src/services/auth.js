@@ -1,15 +1,7 @@
 const { getSessionFile } = require("./browser");
 
 async function ensureLoggedIn(page, context, env) {
-    const requestedUrl = page.url();
     const fallbackUrl = `${env.baseUrl}/liveness-detection-approval/`;
-
-    const targetUrl =
-        requestedUrl &&
-        !requestedUrl.includes("about:blank") &&
-        !requestedUrl.includes("/auth/login")
-            ? requestedUrl
-            : fallbackUrl;
 
     const isLoginPage = async () => {
         const currentUrl = page.url();
@@ -21,32 +13,96 @@ async function ensureLoggedIn(page, context, env) {
             return true;
         }
 
-        const emailInputVisible = await page
+        const emailVisible = await page
             .locator('input[placeholder="Email address"]')
             .first()
             .isVisible()
             .catch(() => false);
 
-        if (emailInputVisible) {
-            return true;
-        }
-
-        const passwordInputVisible = await page
+        const passwordVisible = await page
             .locator('input[placeholder="Password"]')
             .first()
             .isVisible()
             .catch(() => false);
 
-        return passwordInputVisible;
+        return emailVisible || passwordVisible;
     };
 
-    const loginDetected = await isLoginPage();
+    const isAppPage = async () => {
+        const currentUrl = page.url();
+
+        if (currentUrl.includes("/auth/login")) {
+            return false;
+        }
+
+        const bodyText = await page
+            .locator("body")
+            .innerText()
+            .catch(() => "");
+
+        return (
+            /liveness detection/i.test(bodyText) ||
+            /manual approval/i.test(bodyText) ||
+            /transcribe/i.test(bodyText) ||
+            /fraud detection/i.test(bodyText) ||
+            /contracts/i.test(bodyText) ||
+            /reports/i.test(bodyText) ||
+            /accounts/i.test(bodyText)
+        );
+    };
+
+    const waitForAuthStateToSettle = async () => {
+        const startedAt = Date.now();
+
+        while (Date.now() - startedAt < 8000) {
+            if (await isLoginPage()) {
+                return "login";
+            }
+
+            if (await isAppPage()) {
+                return "app";
+            }
+
+            await page.waitForTimeout(500);
+        }
+
+        if (await isLoginPage()) {
+            return "login";
+        }
+
+        if (await isAppPage()) {
+            return "app";
+        }
+
+        return "unknown";
+    };
+
+    const requestedUrl = page.url();
+
+    const targetUrl =
+        requestedUrl &&
+        !requestedUrl.includes("about:blank") &&
+        !requestedUrl.includes("/auth/login")
+            ? requestedUrl
+            : fallbackUrl;
+
+    const authState = await waitForAuthStateToSettle();
 
     console.log(`[${env.label}] ensureLoggedIn URL: ${page.url()}`);
-    console.log(`[${env.label}] Login page detected: ${loginDetected}`);
+    console.log(`[${env.label}] Auth state detected: ${authState}`);
 
-    if (!loginDetected) {
+    if (authState === "app") {
         return;
+    }
+
+    if (authState === "unknown") {
+        console.warn(
+            `[${env.label}] Auth state unknown. Current URL: ${page.url()}`
+        );
+
+        if (!(await isLoginPage())) {
+            return;
+        }
     }
 
     console.log(`[${env.label}] Session expired. Logging in again...`);
@@ -80,24 +136,26 @@ async function ensureLoggedIn(page, context, env) {
         page.click('button:has-text("SIGN IN")')
     ]);
 
-    await page.waitForTimeout(2000);
+    const postLoginState = await waitForAuthStateToSettle();
 
-    if (await isLoginPage()) {
+    if (postLoginState === "login") {
         throw new Error(
             `[${env.label}] Login failed. Still on login page after submitting credentials. Current URL: ${page.url()}`
         );
     }
 
-    console.log(`[${env.label}] Login submit completed. Returning to target URL: ${targetUrl}`);
+    console.log(
+        `[${env.label}] Login completed. Returning to target URL: ${targetUrl}`
+    );
 
     await page.goto(targetUrl, {
         waitUntil: "domcontentloaded",
         timeout: 30000
     });
 
-    await page.waitForTimeout(2000);
+    const finalState = await waitForAuthStateToSettle();
 
-    if (await isLoginPage()) {
+    if (finalState === "login") {
         throw new Error(
             `[${env.label}] Login failed or session was not restored after returning to target page. Current URL: ${page.url()}`
         );
