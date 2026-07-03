@@ -31,6 +31,9 @@ const ADMIN_TOKEN = process.env.ADMIN_TOKEN;
 
 const DATA_DIR = process.env.DATA_DIR || path.join(process.cwd(), "data");
 
+const LIVE_MONITOR_MODE = process.env.LIVE_MONITOR_MODE === "true";
+
+
 fs.mkdirSync(DATA_DIR, {
     recursive: true
 });
@@ -721,36 +724,49 @@ async function sendFlatline(windowName) {
 
 console.log("Keynua monitor scheduler started");
 
-console.log(
-    "[SCHEDULER] Running every 90 seconds"
-);
+if (LIVE_MONITOR_MODE) {
+    const startLiveWorker = require("./src/services/liveWorker");
 
-withTimeout(
-    runMonitor(),
-    MONITOR_RUN_TIMEOUT_MS,
-    "Initial monitor run"
-).catch(console.error);
+    console.log("[SCHEDULER] Running in LIVE monitor mode");
 
-setInterval(async () => {
-    try {
-    	await withTimeout(
-        	runMonitor(),
-        	MONITOR_RUN_TIMEOUT_MS,
-        	"Scheduled monitor run"
-    	);
-	} catch (error) {
-    	console.error("Scheduler error:", error);
+    startLiveWorker({
+        getActiveWindowConfig,
+        maybeSendWindowEvent,
+        sendHeartbeat,
+        sendFlatline,
+        formatKeynuaTime,
+        sendPushover
+    }).catch(console.error);
+} else {
+    console.log("[SCHEDULER] Running every 90 seconds");
 
-    	if (String(error.message || "").includes("timed out")) {
-        	await sendPushover(
-            	"⚠️ Keynua Monitor Restarting",
-            	"Monitor execution exceeded the timeout. Restarting the application."
-        	);
+    withTimeout(
+        runMonitor(),
+        MONITOR_RUN_TIMEOUT_MS,
+        "Initial monitor run"
+    ).catch(console.error);
 
-        	process.exit(1);
-    	}
-	}
-}, 90 * 1000);
+    setInterval(async () => {
+        try {
+            await withTimeout(
+                runMonitor(),
+                MONITOR_RUN_TIMEOUT_MS,
+                "Scheduled monitor run"
+            );
+        } catch (error) {
+            console.error("Scheduler error:", error);
+
+            if (String(error.message || "").includes("timed out")) {
+                await sendPushover(
+                    "⚠️ Keynua Monitor Restarting",
+                    "Monitor execution exceeded the timeout. Restarting the application."
+                );
+
+                process.exit(1);
+            }
+        }
+    }, 90 * 1000);
+}
 
 function formatKeynuaTime(createdAt) {
     if (!createdAt || createdAt === "Unknown") return createdAt;

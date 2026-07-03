@@ -3,6 +3,19 @@ const { getSessionFile } = require("./browser");
 async function ensureLoggedIn(page, context, env) {
     const fallbackUrl = `${env.baseUrl}/liveness-detection-approval/`;
 
+    const hasJwtExpiredMessage = async () => {
+        const bodyText = await page
+            .locator("body")
+            .innerText()
+            .catch(() => "");
+
+        return (
+            /JwtTokenExpired/i.test(bodyText) ||
+            /credentials you provided are not valid/i.test(bodyText) ||
+            /unauthorized/i.test(bodyText)
+        );
+    };
+
     const isLoginPage = async () => {
         const currentUrl = page.url();
 
@@ -10,6 +23,10 @@ async function ensureLoggedIn(page, context, env) {
             currentUrl.includes("/auth/login") ||
             currentUrl.includes("returnTo=")
         ) {
+            return true;
+        }
+
+        if (await hasJwtExpiredMessage()) {
             return true;
         }
 
@@ -32,6 +49,10 @@ async function ensureLoggedIn(page, context, env) {
         const currentUrl = page.url();
 
         if (currentUrl.includes("/auth/login")) {
+            return false;
+        }
+
+        if (await hasJwtExpiredMessage()) {
             return false;
         }
 
@@ -103,6 +124,19 @@ async function ensureLoggedIn(page, context, env) {
         if (!(await isLoginPage())) {
             return;
         }
+    }
+
+    if (await hasJwtExpiredMessage()) {
+        console.warn(
+            `[${env.label}] JWT expired state detected. Clearing session before login.`
+        );
+
+        await context.clearCookies().catch(() => {});
+
+        await page.goto(`${env.baseUrl}/auth/login`, {
+            waitUntil: "domcontentloaded",
+            timeout: 30000
+        });
     }
 
     console.log(`[${env.label}] Session expired. Logging in again...`);
