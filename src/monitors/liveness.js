@@ -25,6 +25,21 @@ function saveSeen(env, data) {
     fs.writeFileSync(seenFile, JSON.stringify(data, null, 2));
 }
 
+async function waitForLivenessList(page, env, label) {
+    try {
+        await page.waitForResponse(
+            response =>
+                response.url().includes("/liveness-detection/v1/web/list") &&
+                response.status() === 200,
+            { timeout: 5000 }
+        );
+
+        console.log(`[${env.label}] ${label} liveness list loaded`);
+    } catch {
+        console.warn(`[${env.label}] ${label} liveness list wait timed out. Continuing with page content.`);
+    }
+}
+
 async function debugLivenessPage(page, env, label) {
     if (!DEBUG_LIVENESS) return;
 
@@ -89,7 +104,8 @@ async function monitorLiveness(page, env) {
         throw new Error(`[${env.label}] Still on login page while checking liveness.`);
     }
 
-    await page.waitForTimeout(4500);
+    //await page.waitForTimeout(4500);
+    await waitForLivenessList(page, env, "High priority");
     await debugLivenessPage(page, env, "High Priority");
 
     let rows = [];
@@ -110,7 +126,8 @@ async function monitorLiveness(page, env) {
 
         await lowPriorityTab.click();
 
-        await page.waitForTimeout(4000);
+        //await page.waitForTimeout(4000);
+        await waitForLivenessList(page, env, "Low priority");
         await debugLivenessPage(page, env, "Low Priority");
 
         rows = rows.concat(
