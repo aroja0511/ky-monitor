@@ -2,7 +2,8 @@ const fs = require("fs");
 const path = require("path");
 
 const ensureLoggedIn = require("../services/auth");
-//const waitForKeynuaReady = require("../services/waitForKeynuaReady");
+
+const DEBUG_LIVENESS = process.env.DEBUG_LIVENESS === "true";
 
 function getSeenFile(env) {
     return `state/${env.key}-liveness.json`;
@@ -10,9 +11,7 @@ function getSeenFile(env) {
 
 function loadSeen(env) {
     const seenFile = getSeenFile(env);
-
     if (!fs.existsSync(seenFile)) return [];
-
     return JSON.parse(fs.readFileSync(seenFile));
 }
 
@@ -22,17 +21,28 @@ function saveSeen(env, data) {
     fs.mkdirSync(path.dirname(seenFile), {
         recursive: true
     });
+
     fs.writeFileSync(seenFile, JSON.stringify(data, null, 2));
 }
 
-async function extractLivenessRows(page, location) {
+async function debugLivenessPage(page, env, label) {
+    if (!DEBUG_LIVENESS) return;
 
+    const text = await page.locator("body").innerText().catch(() => "");
+    const html = await page.locator("body").innerHTML().catch(() => "");
+
+    console.log(`[LIVENESS DEBUG] ${env.label} ${label} URL: ${page.url()}`);
+    console.log(`[LIVENESS DEBUG TEXT] ${env.label} ${label}`);
+    console.log(text.slice(0, 3000));
+
+    console.log(`[LIVENESS DEBUG HTML] ${env.label} ${label}`);
+    console.log(html.slice(0, 5000));
+}
+
+async function extractLivenessRows(page, location) {
     const pageText = await page.locator("body").innerText();
 
     console.log(`[LIVENESS] URL: ${page.url()}`);
-    //console.log(`[LIVENESS] Location: ${location}`);
-    //console.log(`[LIVENESS] Text Preview:`);
-    //console.log(pageText.slice(0, 2000));
 
     const itemIdMatches = pageText.match(
         /[a-f0-9-]+:item:\d+:\d+/gi
@@ -51,71 +61,70 @@ async function extractLivenessRows(page, location) {
 }
 
 async function monitorLiveness(page, env) {
+    if (DEBUG_LIVENESS) {
+        page.on("response", response => {
+            const url = response.url();
+
+            if (
+                url.includes("liveness") ||
+                url.includes("approval") ||
+                url.includes("request") ||
+                url.includes("item")
+            ) {
+                console.log(
+                    `[LIVENESS RESPONSE] ${env.label} ${response.status()} ${url}`
+                );
+            }
+        });
+    }
+
     await page.goto(`${env.baseUrl}/liveness-detection-approval/`, {
         waitUntil: "domcontentloaded",
-		timeout: 30000
+        timeout: 30000
     });
-    
+
     await ensureLoggedIn(page, page.context(), env);
 
-  	if (page.url().includes("/auth/login")) {
-  		throw new Error(`[${env.label}] Still on login page while checking liveness.`);
-  	}
-    
+    if (page.url().includes("/auth/login")) {
+        throw new Error(`[${env.label}] Still on login page while checking liveness.`);
+    }
+
     await page.waitForTimeout(4500);
-    //await waitForKeynuaReady(page, env, "Liveness high priority");
+    await debugLivenessPage(page, env, "High Priority");
 
     let rows = [];
 
     rows = rows.concat(await extractLivenessRows(page, "Prioridad Alta"));
 
- /*    const lowPriorityTab = page.locator("text=Prioridad baja");
-
-    if (await lowPriorityTab.count()) {
-        await lowPriorityTab.click();
-        //await page.waitForTimeout(5000);
-        await waitForKeynuaReady(page, env, "Liveness low priority");
-        rows = rows.concat(await extractLivenessRows(page, "Prioridad Baja"));
-    } */
-    
-    
     const lowPriorityTab = page.getByText(
-    "Prioridad baja",
-    { exact: true }
-	);
+        "Prioridad baja",
+        { exact: true }
+    );
 
-	const hasLowPriorityTab = await lowPriorityTab
-    	.isVisible()
-    	.catch(() => false);
+    const hasLowPriorityTab = await lowPriorityTab
+        .isVisible()
+        .catch(() => false);
 
-	if (hasLowPriorityTab) {
-    	console.log(`[${env.label}] Clicking low priority tab`);
+    if (hasLowPriorityTab) {
+        console.log(`[${env.label}] Clicking low priority tab`);
 
-    	await lowPriorityTab.click();
-   
+        await lowPriorityTab.click();
 
+        await page.waitForTimeout(4000);
+        await debugLivenessPage(page, env, "Low Priority");
 
-    	await page.waitForTimeout(4000);
- 
+        rows = rows.concat(
+            await extractLivenessRows(
+                page,
+                "Prioridad Baja"
+            )
+        );
+    } else {
+        console.warn(
+            `[${env.label}] Liveness low priority tab not found.`
+        );
+    }
 
-    	/* await waitForKeynuaReady(
-        	page,
-        	env,
-       		"Liveness low priority"
-    	);
- */
-    	rows = rows.concat(
-       		await extractLivenessRows(
-            	page,
-            	"Prioridad Baja"
-        	)
-    	);
-	} else {
-    	console.warn(
-        	`[${env.label}] Liveness low priority tab not found.`
-    	);
-	}
-        
     const uniqueRows = Array.from(
         new Map(rows.map(row => [row.itemId, row])).values()
     );
