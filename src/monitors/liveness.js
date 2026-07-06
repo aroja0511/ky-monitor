@@ -31,12 +31,14 @@ async function waitForLivenessList(page, env, label) {
             response =>
                 response.url().includes("/liveness-detection/v1/web/list") &&
                 response.status() === 200,
-            { timeout: 5000 }
+            { timeout: 2000 }
         );
 
         console.log(`[${env.label}] ${label} liveness list loaded`);
+        return true;
     } catch {
         console.warn(`[${env.label}] ${label} liveness list wait timed out. Continuing with page content.`);
+        return false;
     }
 }
 
@@ -104,7 +106,7 @@ async function monitorLiveness(page, env) {
         throw new Error(`[${env.label}] Still on login page while checking liveness.`);
     }
 
-    console.log(`[${env.label}] Waiting for High priority list`);
+    /* console.log(`[${env.label}] Waiting for High priority list`);
 
 	try {
     	await waitForLivenessList(page, env, "High priority");
@@ -115,7 +117,20 @@ async function monitorLiveness(page, env) {
         	`[${env.label}] High priority list failed: ${err.message}`
     	);
 	}
+ */
+ 
+ 	console.log(`[${env.label}] Waiting for High priority list`);
 
+	const highReady = await waitForLivenessList(
+  	  page,
+  	  env,
+  	  "High priority"
+	);
+
+	/* if (highReady) {
+    	console.log(`[${env.label}] High priority list ready`);
+	} */
+	
     let rows = [];
 
     rows = rows.concat(await extractLivenessRows(page, "Prioridad Alta"));

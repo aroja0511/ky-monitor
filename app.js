@@ -94,11 +94,11 @@ const sendPushover = require("./src/services/pushover");
 const DEFAULT_WINDOWS = {
     morning: {
         start: "07:00",
-        end: "09:04"
+        end: "09:01"
     },
     afternoon: {
         start: "13:00",
-        end: "16:04"
+        end: "16:01"
     }
 };
 
@@ -376,7 +376,7 @@ function normalizeRange(range) {
         startRaw.includes(":") ? startRaw : `${startRaw.padStart(2, "0")}:00`;
 
     const endHour =
-        endRaw.includes(":") ? endRaw : `${endRaw.padStart(2, "0")}:04`;
+        endRaw.includes(":") ? endRaw : `${endRaw.padStart(2, "0")}:01`;
 
     return {
         start,
@@ -609,7 +609,7 @@ async function runMonitor() {
                 for (const request of livenessRequests) {
                     await sendPushover(
                         `🚨 [${env.label}] New Liveness ${request.location} Request`,
-                        `Created: ${formatKeynuaTime(request.createdAt)} CET\nRequest ID:\n${request.itemId}`
+                        `${request.location}\nCreated: ${formatKeynuaTime(request.createdAt)} CET\nRequest ID:\n${request.itemId}`
                     );
                 }
 
@@ -622,7 +622,7 @@ async function runMonitor() {
                 for (const request of transcribeRequests) {
                     await sendPushover(
                         `🚨 [${env.label}] New Transcribe Request`,
-                        `Created: ${formatKeynuaTime(request.createdAt)} CET\nRequest ID:\n${request.itemId}`
+                        `Transcribe\nCreated: ${formatKeynuaTime(request.createdAt)} CET\nRequest ID:\n${request.itemId}`
                     );
                 }
 
@@ -635,7 +635,7 @@ async function runMonitor() {
                 for (const request of fraudRequests) {
                     await sendPushover(
                         `🚨 [${env.label}] New Fraud Detection Request`,
-                        `Created: ${formatKeynuaTime(request.createdAt)} CET\nRequest ID:\n${request.itemId}`
+                        `Fraud Detection\nCreated: ${formatKeynuaTime(request.createdAt)} CET\nRequest ID:\n${request.itemId}`
                     );
                 }
 
