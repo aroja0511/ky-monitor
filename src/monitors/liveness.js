@@ -104,9 +104,17 @@ async function monitorLiveness(page, env) {
         throw new Error(`[${env.label}] Still on login page while checking liveness.`);
     }
 
-    //await page.waitForTimeout(4500);
-    await waitForLivenessList(page, env, "High priority");
-    await debugLivenessPage(page, env, "High Priority");
+    console.log(`[${env.label}] Waiting for High priority list`);
+
+	try {
+    	await waitForLivenessList(page, env, "High priority");
+
+    	console.log(`[${env.label}] High priority list ready`);
+	} catch (err) {
+    	console.warn(
+        	`[${env.label}] High priority list failed: ${err.message}`
+    	);
+	}
 
     let rows = [];
 
@@ -124,11 +132,17 @@ async function monitorLiveness(page, env) {
     if (hasLowPriorityTab) {
         console.log(`[${env.label}] Clicking low priority tab`);
 
-        await lowPriorityTab.click();
+      	try {
+    		const lowListPromise = waitForLivenessList(page, env, "Low priority");
 
-        //await page.waitForTimeout(4000);
-        await waitForLivenessList(page, env, "Low priority");
-        await debugLivenessPage(page, env, "Low Priority");
+    		await lowPriorityTab.click({ timeout: 3000 });
+    		console.log(`[${env.label}] Low priority tab clicked`);
+
+    		await lowListPromise;
+		} catch (err) {
+    		console.warn(`[${env.label}] Low priority tab failed: ${err.message}`);
+    		// Continue monitoring instead of restarting the whole browser
+			}
 
         rows = rows.concat(
             await extractLivenessRows(
