@@ -169,10 +169,10 @@ function isAuthorized(req) {
 http.createServer(async (req, res) => {
 
     const parsedUrl = new URL(
-    	req.url,
-    	`http://${req.headers.host}`
+        req.url,
+        `http://${req.headers.host}`
     );
-    
+
     if (
         req.method === "GET" &&
         (parsedUrl.pathname === "/" || parsedUrl.pathname === "/health")
@@ -235,44 +235,49 @@ http.createServer(async (req, res) => {
                 throw new Error("window must be morning or afternoon");
             }
 
-            if (!payload.range) {
-                throw new Error("range is required. Example: 13-18");
+            const type = payload.type || "window";
+
+            if (!["window", "blackout"].includes(type)) {
+                throw new Error("type must be window or blackout")
+            }
+            if (type === "window" && !payload.range) {
+                throw new Error("range is required for window overries. Example: 13-18");
             }
 
             const overrides = readScheduleConfig();
-            
+
             const existingIndex = overrides.findIndex(
-    		x =>
-        		x.startDate === payload.startDate &&
-        		x.endDate === payload.endDate &&
-	       		x.window === payload.window
-			);
+                x =>
+                x.startDate === payload.startDate &&
+                x.endDate === payload.endDate &&
+                x.window === payload.window &&
+                (x.type || "window") === type
+            );
 
             const override = {
+                type,
                 startDate: payload.startDate,
                 endDate: payload.endDate,
                 window: payload.window,
-                range: payload.range,
+                range: type === "window" ? payload.range : null,
                 includeWeekends: payload.includeWeekends || false,
-                createdAt:
-                	existingIndex !== -1
-						? overrides[existingIndex].createdAt
-            			: new Date().toISOString(),
-				updatedAt: new Date().toISOString()
+                createdAt: existingIndex !== -1 ?
+                    overrides[existingIndex].createdAt : new Date().toISOString(),
+                updatedAt: new Date().toISOString()
             };
-            
+
             let action = "created";
-            
+
             if (existingIndex !== -1) {
-            	overrides[existingIndex] = override;
-            	action = "updated";
+                overrides[existingIndex] = override;
+                action = "updated";
             } else {
-            	overrides.push(override);
+                overrides.push(override);
             }
-            
+
             console.log(
-				`[SCHEDULE] Override ${action}: ${payload.startDate} → ${payload.endDate} (${payload.window}) ${payload.range}`
-			);
+                `[SCHEDULE] ${type} override ${action}: ${payload.startDate} → ${payload.endDate} (${payload.window}) ${payload.range || "BLACKOUT"}`
+            );
 
             //overrides.push(override);
 
@@ -400,7 +405,35 @@ function getActiveWindowConfig() {
 
     const overrides = readScheduleConfig();
 
+    const activeBlackout = overrides.find(override => {
+        if ((override.type || "window") !== "blackout") {
+            return false;
+        }
+
+        if (!isDateWithinRange(date, override.startDate, override.endDate)) {
+            return false;
+        }
+
+        if (override.window !== "morning" && override.window !== "afternoon") {
+            return false;
+        }
+
+        if (isWeekend && !override.includeWeekends) {
+            return false;
+        }
+
+        return true;
+    });
+
+    if (activeBlackout) {
+        return null;
+    }
+
     for (const override of overrides) {
+        if ((override.type || "window") === "blackout") {
+            continue;
+        }
+
         if (!isDateWithinRange(date, override.startDate, override.endDate)) {
             continue;
         }
@@ -466,28 +499,28 @@ async function maybeSendWindowEvent(type, activeWindow) {
         return;
     }
 
-	const nowMinutes = timeToMinutes(time);
-	const startMinutes = timeToMinutes(activeWindow.start);
-	const endMinutes = timeToMinutes(activeWindow.end);
+    const nowMinutes = timeToMinutes(time);
+    const startMinutes = timeToMinutes(activeWindow.start);
+    const endMinutes = timeToMinutes(activeWindow.end);
 
-	if (
-    	type === "heartbeat" &&
-    	nowMinutes >= startMinutes &&
-    	nowMinutes <= startMinutes + 1
-	) {
-    	sentWindowEvents.add(eventKey);
-    	await sendHeartbeat(activeWindow.window);
-	}
+    if (
+        type === "heartbeat" &&
+        nowMinutes >= startMinutes &&
+        nowMinutes <= startMinutes + 1
+    ) {
+        sentWindowEvents.add(eventKey);
+        await sendHeartbeat(activeWindow.window);
+    }
 
-	if (
-    	type === "flatline" &&
-    	nowMinutes >= endMinutes &&
-    	nowMinutes <= endMinutes + 1
-	) {
-    	sentWindowEvents.add(eventKey);
-    	await sendFlatline(activeWindow.window);
-	}
-	}
+    if (
+        type === "flatline" &&
+        nowMinutes >= endMinutes &&
+        nowMinutes <= endMinutes + 1
+    ) {
+        sentWindowEvents.add(eventKey);
+        await sendFlatline(activeWindow.window);
+    }
+}
 
 function withTimeout(promise, ms, label) {
     let timeout;
@@ -521,24 +554,24 @@ async function runMonitor() {
     );
 
     if (isRunning) {
-    	const runningFor = currentRunStartedAt
-        ? Date.now() - currentRunStartedAt
-        : 0;
-        
+        const runningFor = currentRunStartedAt ?
+            Date.now() - currentRunStartedAt :
+            0;
+
         console.log(`[SKIP] Previous monitor run still active for ${(runningFor / 1000).toFixed(1)}s. PID=${process.pid}`);
-        
+
         if (runningFor > STALE_RUN_THRESHOLD_MS) {
-        	console.warn(
-            	`[RECOVERY] Stale monitor run detected after ${(runningFor / 1000).toFixed(1)}s. Resetting run lock.`
-        	);
+            console.warn(
+                `[RECOVERY] Stale monitor run detected after ${(runningFor / 1000).toFixed(1)}s. Resetting run lock.`
+            );
 
-        	await sendPushover(
-        		"⚠️ Keynua Monitor Restarting",
-				`A stale monitor run was detected after ${(runningFor / 1000).toFixed(1)}s.\nRestarting the application to clear stuck browser resources.`
-    		);
+            await sendPushover(
+                "⚠️ Keynua Monitor Restarting",
+                `A stale monitor run was detected after ${(runningFor / 1000).toFixed(1)}s.\nRestarting the application to clear stuck browser resources.`
+            );
 
-    		process.exit(1);
-    	}
+            process.exit(1);
+        }
 
         if (!skipAlertSent) {
             skipAlertSent = true;
@@ -593,9 +626,9 @@ async function runMonitor() {
 
                 await page.goto(`${env.baseUrl}/liveness-detection-approval/`, {
                     waitUntil: "domcontentloaded",
-    				timeout: 30000
+                    timeout: 30000
                 });
-                
+
                 await page.waitForTimeout(3000);
 
                 await ensureLoggedIn(page, context, env);
@@ -603,7 +636,7 @@ async function runMonitor() {
                 if (page.url().includes("/auth/login")) {
                     throw new Error(`[${env.label}] Still on login page after ensureLoggedIn.`);
                 }
- 
+
                 const livenessRequests = await monitorLiveness(page, env);
 
                 for (const request of livenessRequests) {
@@ -675,8 +708,8 @@ async function runMonitor() {
         console.log(`[PERF] Monitor completed in ${duration}s`);
 
         skipAlertSent = false;
-		isRunning = false;
-		currentRunStartedAt = null;
+        isRunning = false;
+        currentRunStartedAt = null;
 
         if (browser) {
             await browser.close();
@@ -705,7 +738,7 @@ async function sendHeartbeat(windowName) {
         "✅ Keynua Monitor Heartbeat",
         `Monitor is running.\nWindow: ${windowName}\nTime: ${now} CET`
     );
-    
+
     console.log(`[HEARTBEAT] Sent for ${windowName} window at ${now} CET`);
 }
 
@@ -718,7 +751,7 @@ async function sendFlatline(windowName) {
         "🛑 Keynua Monitor Flatline",
         `${windowName} monitoring window ended.\nTime: ${now} CET`
     );
-    
+
     console.log(`[FLATLINE] Sent for ${windowName} window at ${now} CET`);
 }
 

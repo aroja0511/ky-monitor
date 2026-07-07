@@ -209,7 +209,7 @@ async function runEnvironmentLivePass(options) {
     for (const request of livenessRequests) {
         await sendPushover(
             `🚨 [${env.label}] New Liveness ${request.location} Request`,
-            `Created: ${formatKeynuaTime(request.createdAt)} CET\nRequest ID:\n${request.itemId}`
+            `${request.location} - Created: ${formatKeynuaTime(request.createdAt)} CET\nRequest ID:\n${request.itemId}`
         );
     }
 
@@ -226,7 +226,7 @@ async function runEnvironmentLivePass(options) {
     for (const request of transcribeRequests) {
         await sendPushover(
             `🚨 [${env.label}] New Transcribe Request`,
-            `Created: ${formatKeynuaTime(request.createdAt)} CET\nRequest ID:\n${request.itemId}`
+            `Transcribe Created: ${formatKeynuaTime(request.createdAt)} CET\nRequest ID:\n${request.itemId}`
         );
     }
 
@@ -243,7 +243,7 @@ async function runEnvironmentLivePass(options) {
     for (const request of fraudRequests) {
         await sendPushover(
             `🚨 [${env.label}] New Fraud Detection Request`,
-            `Created: ${formatKeynuaTime(request.createdAt)} CET\nRequest ID:\n${request.itemId}`
+            `Fraud Created: ${formatKeynuaTime(request.createdAt)} CET\nRequest ID:\n${request.itemId}`
         );
     }
 

@@ -1,4 +1,6 @@
-const { getSessionFile } = require("./browser");
+const {
+    getSessionFile
+} = require("./browser");
 
 async function ensureLoggedIn(page, context, env) {
     const fallbackUrl = `${env.baseUrl}/liveness-detection-approval/`;
@@ -98,16 +100,65 @@ async function ensureLoggedIn(page, context, env) {
         return "unknown";
     };
 
+    const recoverUnknownAuthState = async (targetUrl) => {
+        console.warn(
+            `[${env.label}] Auth state unknown. Reloading current page once. Current URL: ${page.url()}`
+        );
+
+        await page.reload({
+            waitUntil: "domcontentloaded",
+            timeout: 30000
+        }).catch(async () => {
+            console.warn(`[${env.label}] Reload failed. Navigating back to target URL.`);
+
+            await page.goto(targetUrl, {
+                waitUntil: "domcontentloaded",
+                timeout: 30000
+            });
+        });
+
+        const retryState = await waitForAuthStateToSettle();
+
+        console.log(`[${env.label}] Auth state after reload: ${retryState}`);
+
+        if (retryState === "app" || retryState === "login") {
+            return retryState;
+        }
+
+        console.warn(
+            `[${env.label}] Auth state still unknown after reload. Clearing cookies and forcing login.`
+        );
+
+        await context.clearCookies().catch(() => {});
+
+        await page.goto(`${env.baseUrl}/auth/login`, {
+            waitUntil: "domcontentloaded",
+            timeout: 30000
+        });
+
+        const forcedLoginState = await waitForAuthStateToSettle();
+
+        console.log(`[${env.label}] Auth state after forced login navigation: ${forcedLoginState}`);
+
+        if (forcedLoginState !== "login") {
+            throw new Error(
+                `[${env.label}] Could not recover unknown auth state. Current URL: ${page.url()}`
+            );
+        }
+
+        return "login";
+    };
+
     const requestedUrl = page.url();
 
     const targetUrl =
         requestedUrl &&
         !requestedUrl.includes("about:blank") &&
-        !requestedUrl.includes("/auth/login")
-            ? requestedUrl
-            : fallbackUrl;
+        !requestedUrl.includes("/auth/login") ?
+        requestedUrl :
+        fallbackUrl;
 
-    const authState = await waitForAuthStateToSettle();
+    let authState = await waitForAuthStateToSettle();
 
     console.log(`[${env.label}] ensureLoggedIn URL: ${page.url()}`);
     console.log(`[${env.label}] Auth state detected: ${authState}`);
@@ -115,15 +166,13 @@ async function ensureLoggedIn(page, context, env) {
     if (authState === "app") {
         return;
     }
-
+    
     if (authState === "unknown") {
-        console.warn(
-            `[${env.label}] Auth state unknown. Current URL: ${page.url()}`
-        );
-
-        if (!(await isLoginPage())) {
-            return;
-        }
+    	authState = await recoverUnknownAuthState(targetUrl);
+    	
+    	if (authState === "app") {
+        return;
+    	}   
     }
 
     if (await hasJwtExpiredMessage()) {
@@ -161,11 +210,12 @@ async function ensureLoggedIn(page, context, env) {
 
     await Promise.all([
         page
-            .waitForURL(
-                url => !url.toString().includes("/auth/login"),
-                { timeout: 30000 }
-            )
-            .catch(() => null),
+        .waitForURL(
+            url => !url.toString().includes("/auth/login"), {
+                timeout: 30000
+            }
+        )
+        .catch(() => null),
 
         page.click('button:has-text("SIGN IN")')
     ]);
