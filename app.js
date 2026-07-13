@@ -238,10 +238,30 @@ http.createServer(async (req, res) => {
             const type = payload.type || "window";
 
             if (!["window", "blackout"].includes(type)) {
-                throw new Error("type must be window or blackout")
+                throw new Error("type must be window or blackout");
             }
             if (type === "window" && !payload.range) {
-                throw new Error("range is required for window overries. Example: 13-18");
+                throw new Error("range is required for window overrides. Example: 13-18");
+            }
+
+            if (
+                payload.range &&
+                !/^\d{1,2}(?::\d{2})?-\d{1,2}(?::\d{2})?$/.test(payload.range)
+            ) {
+                throw new Error(
+                    "range must use a valid format such as 13-18 or 13:25-13:45"
+                );
+            }
+
+            if (payload.range) {
+                const normalizedRange = normalizeRange(payload.range);
+
+                if (
+                    timeToMinutes(normalizedRange.start) >=
+                    timeToMinutes(normalizedRange.end)
+                ) {
+                    throw new Error("range end time must be later than start time");
+                }
             }
 
             const overrides = readScheduleConfig();
@@ -259,10 +279,19 @@ http.createServer(async (req, res) => {
                 startDate: payload.startDate,
                 endDate: payload.endDate,
                 window: payload.window,
-                range: type === "window" ? payload.range : null,
+
+                // Required for window overrides.
+                // Optional for blackouts:
+                // - null = blackout the entire selected window
+                // - a range = blackout only that period
+                range: payload.range || null,
+
                 includeWeekends: payload.includeWeekends || false,
+                reason: payload.reason || null,
+
                 createdAt: existingIndex !== -1 ?
                     overrides[existingIndex].createdAt : new Date().toISOString(),
+
                 updatedAt: new Date().toISOString()
             };
 
@@ -275,11 +304,18 @@ http.createServer(async (req, res) => {
                 overrides.push(override);
             }
 
-            console.log(
-                `[SCHEDULE] ${type} override ${action}: ${payload.startDate} → ${payload.endDate} (${payload.window}) ${payload.range || "BLACKOUT"}`
-            );
+            const scheduleDescription =
+                type === "blackout" ?
+                payload.range ?
+                `BLACKOUT ${payload.range}` :
+                "FULL WINDOW BLACKOUT" :
+                payload.range;
 
-            //overrides.push(override);
+            console.log(
+                `[SCHEDULE] ${type} override ${action}: ` +
+                `${payload.startDate} → ${payload.endDate} ` +
+                `(${payload.window}) ${scheduleDescription}`
+            );
 
             saveScheduleConfig(overrides);
 
@@ -403,38 +439,78 @@ function getActiveWindowConfig() {
     const isWeekend =
         day === "Sat" || day === "Sun";
 
+    const nowMinutes = timeToMinutes(time);
+
     const overrides = readScheduleConfig();
 
-    const activeBlackout = overrides.find(override => {
-        if ((override.type || "window") !== "blackout") {
-            return false;
-        }
+    /*
+     * A blackout only applies when:
+     * - its date range includes today
+     * - its selected window matches
+     * - weekends are allowed when applicable
+     * - its optional time range includes the current time
+     *
+     * A blackout without a range suppresses the entire selected window.
+     */
+    const isWindowBlackedOutNow = windowName => {
+        return overrides.some(override => {
+            if ((override.type || "window") !== "blackout") {
+                return false;
+            }
 
-        if (!isDateWithinRange(date, override.startDate, override.endDate)) {
-            return false;
-        }
+            if (override.window !== windowName) {
+                return false;
+            }
 
-        if (override.window !== "morning" && override.window !== "afternoon") {
-            return false;
-        }
+            if (
+                !isDateWithinRange(
+                    date,
+                    override.startDate,
+                    override.endDate
+                )
+            ) {
+                return false;
+            }
 
-        if (isWeekend && !override.includeWeekends) {
-            return false;
-        }
+            if (isWeekend && !override.includeWeekends) {
+                return false;
+            }
 
-        return true;
-    });
+            // No range means the entire selected window is blacked out.
+            if (!override.range) {
+                return true;
+            }
 
-    if (activeBlackout) {
-        return null;
-    }
+            const blackoutRange = normalizeRange(override.range);
 
+            const blackoutStartMinutes =
+                timeToMinutes(blackoutRange.start);
+
+            const blackoutEndMinutes =
+                timeToMinutes(blackoutRange.end);
+
+            return (
+                nowMinutes >= blackoutStartMinutes &&
+                nowMinutes <= blackoutEndMinutes
+            );
+        });
+    };
+
+    /*
+     * Check runtime monitoring-window overrides first.
+     */
     for (const override of overrides) {
         if ((override.type || "window") === "blackout") {
             continue;
         }
 
-        if (!isDateWithinRange(date, override.startDate, override.endDate)) {
+        if (
+            !isDateWithinRange(
+                date,
+                override.startDate,
+                override.endDate
+            )
+        ) {
             continue;
         }
 
@@ -442,13 +518,19 @@ function getActiveWindowConfig() {
             continue;
         }
 
+        if (isWindowBlackedOutNow(override.window)) {
+            continue;
+        }
+
         const range = normalizeRange(override.range);
 
-        const nowMinutes = timeToMinutes(time);
         const startMinutes = timeToMinutes(range.start);
         const endMinutes = timeToMinutes(range.end);
 
-        if (nowMinutes >= startMinutes && nowMinutes <= endMinutes) {
+        if (
+            nowMinutes >= startMinutes &&
+            nowMinutes <= endMinutes
+        ) {
             return {
                 source: "override",
                 window: override.window,
@@ -459,16 +541,30 @@ function getActiveWindowConfig() {
         }
     }
 
+    /*
+     * Default windows remain disabled on weekends.
+     */
     if (isWeekend) {
         return null;
     }
 
-    for (const [windowName, range] of Object.entries(DEFAULT_WINDOWS)) {
-        const nowMinutes = timeToMinutes(time);
+    /*
+     * Check default morning and afternoon windows.
+     */
+    for (
+        const [windowName, range] of Object.entries(DEFAULT_WINDOWS)
+    ) {
+        if (isWindowBlackedOutNow(windowName)) {
+            continue;
+        }
+
         const startMinutes = timeToMinutes(range.start);
         const endMinutes = timeToMinutes(range.end);
 
-        if (nowMinutes >= startMinutes && nowMinutes <= endMinutes) {
+        if (
+            nowMinutes >= startMinutes &&
+            nowMinutes <= endMinutes
+        ) {
             return {
                 source: "default",
                 window: windowName,

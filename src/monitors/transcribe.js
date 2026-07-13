@@ -72,7 +72,7 @@ async function monitorTranscribe(page, env) {
     }).then(() => {
         debug(env, `readiness completed in ${Date.now() - readinessStartedAt}ms`);
     }).catch(() => {
-        console.warn(`[TRANSCRIBE] [${env.label}] Readiness timeout after ${Date.now() - readinessStartedAt}ms. Falling back to current page content.`);
+        console.log(`[TRANSCRIBE] [${env.label}] Readiness not confirmed after ` + `{Date.now() - readinessStartedAt}ms. Continuing with current page content.`);
     });
 
     const extractStartedAt = Date.now();
@@ -84,7 +84,7 @@ async function monitorTranscribe(page, env) {
     debug(env, `page text extracted in ${Date.now() - extractStartedAt}ms | length=${pageText.length}`);
 
     const itemIdMatches = pageText.match(
-        /[a-f0-9-]{8,}-[a-f0-9-]+:\d+:\d+/gi
+        /[a-f0-9-]+:item:\d+:\d+/gi
     ) || [];
 
     const dateMatches = pageText.match(
@@ -97,7 +97,9 @@ async function monitorTranscribe(page, env) {
         type: "Transcribe"
     }));
 
-    console.log(`[${env.label}] Detected transcribe rows:`, rows);
+	if (rows.length > 0) {
+    	console.log(`[${env.label}] Detected transcribe rows:`, rows);
+    }
 
     debug(env, `rows extracted: ${rows.length}`);
 

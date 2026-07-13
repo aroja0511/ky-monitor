@@ -3,6 +3,16 @@ const {
 } = require("./browser");
 
 async function ensureLoggedIn(page, context, env) {
+
+    const username = process.env[env.usernameEnv];
+    const password = process.env[env.passwordEnv];
+
+    if (!username || !password) {
+        throw new Error(
+            `[${env.label}] Missing credentials. Expected Railway variables: ` +
+            `${env.usernameEnv} and ${env.passwordEnv}`
+        );
+    }
     const fallbackUrl = `${env.baseUrl}/liveness-detection-approval/`;
 
     const hasJwtExpiredMessage = async () => {
@@ -166,13 +176,13 @@ async function ensureLoggedIn(page, context, env) {
     if (authState === "app") {
         return;
     }
-    
+
     if (authState === "unknown") {
-    	authState = await recoverUnknownAuthState(targetUrl);
-    	
-    	if (authState === "app") {
-        return;
-    	}   
+        authState = await recoverUnknownAuthState(targetUrl);
+
+        if (authState === "app") {
+            return;
+        }
     }
 
     if (await hasJwtExpiredMessage()) {
@@ -200,12 +210,12 @@ async function ensureLoggedIn(page, context, env) {
 
     await page.fill(
         'input[placeholder="Email address"]',
-        process.env.KEYNUA_USERNAME
+        username
     );
 
     await page.fill(
         'input[placeholder="Password"]',
-        process.env.KEYNUA_PASSWORD
+        password
     );
 
     await Promise.all([
@@ -222,9 +232,10 @@ async function ensureLoggedIn(page, context, env) {
 
     const postLoginState = await waitForAuthStateToSettle();
 
-    if (postLoginState === "login") {
+    if (postLoginState !== "app") {
         throw new Error(
-            `[${env.label}] Login failed. Still on login page after submitting credentials. Current URL: ${page.url()}`
+            `[${env.label}] Login did not reach a valid app state. ` +
+            `Detected state: ${postLoginState}. Current URL: ${page.url()}`
         );
     }
 
@@ -239,9 +250,10 @@ async function ensureLoggedIn(page, context, env) {
 
     const finalState = await waitForAuthStateToSettle();
 
-    if (finalState === "login") {
+    if (finalState !== "app") {
         throw new Error(
-            `[${env.label}] Login failed or session was not restored after returning to target page. Current URL: ${page.url()}`
+            `[${env.label}] Session was not restored after returning to the target page. ` +
+            `Detected state: ${finalState}. Current URL: ${page.url()}`
         );
     }
 
