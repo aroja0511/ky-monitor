@@ -174,14 +174,18 @@ async function ensureLoggedIn(page, context, env) {
     console.log(`[${env.label}] Auth state detected: ${authState}`);
 
     if (authState === "app") {
-        return;
+        return false;
     }
 
     if (authState === "unknown") {
         authState = await recoverUnknownAuthState(targetUrl);
 
         if (authState === "app") {
-            return;
+        	console.log(
+            `[${env.label}] Auth state recovered. Deferring monitoring until the next pass.`
+        	);
+        	
+            return true;
         }
     }
 
@@ -262,6 +266,7 @@ async function ensureLoggedIn(page, context, env) {
     });
 
     console.log(`[${env.label}] Session refreshed.`);
+    return true;
 }
 
 module.exports = ensureLoggedIn;

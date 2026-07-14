@@ -44,7 +44,21 @@ async function monitorFraud(page, env) {
 
     debug(env, "ensureLoggedIn started");
 
-    await ensureLoggedIn(page, page.context(), env);
+    //await ensureLoggedIn(page, page.context(), env);
+    const authRecovered = await ensureLoggedIn(
+        page,
+        page.context(),
+        env
+    );
+
+    if (authRecovered) {
+        const error = new Error(
+            `[${env.label}] Authentication recovered during Fraud. Deferring monitoring to the next pass.`
+        );
+
+        error.code = "AUTH_RECOVERED";
+        throw error;
+    }
 
     debug(env, `ensureLoggedIn completed in ${Date.now() - authStartedAt}ms | URL: ${page.url()}`);
 

@@ -29,9 +29,10 @@ async function waitForLivenessList(page, env, label) {
     try {
         await page.waitForResponse(
             response =>
-                response.url().includes("/liveness-detection/v1/web/list") &&
-                response.status() === 200,
-            { timeout: 2000 }
+            response.url().includes("/liveness-detection/v1/web/list") &&
+            response.status() === 200, {
+                timeout: 2000
+            }
         );
 
         console.log(`[${env.label}] ${label} liveness list loaded`);
@@ -100,7 +101,22 @@ async function monitorLiveness(page, env) {
         timeout: 30000
     });
 
-    await ensureLoggedIn(page, page.context(), env);
+    //await ensureLoggedIn(page, page.context(), env);
+    const authRecovered = await ensureLoggedIn(
+        page,
+        page.context(),
+        env
+    );
+
+    if (authRecovered) {
+        const error = new Error(
+            `[${env.label}] Authentication recovered during Liveness. Deferring monitoring to the next pass.`
+        );
+
+        error.code = "AUTH_RECOVERED";
+        throw error;
+    }
+
 
     if (page.url().includes("/auth/login")) {
         throw new Error(`[${env.label}] Still on login page while checking liveness.`);
@@ -118,26 +134,27 @@ async function monitorLiveness(page, env) {
     	);
 	}
  */
- 
- 	console.log(`[${env.label}] Waiting for High priority list`);
 
-	const highReady = await waitForLivenessList(
-  	  page,
-  	  env,
-  	  "High priority"
-	);
+    console.log(`[${env.label}] Waiting for High priority list`);
 
-	/* if (highReady) {
+    const highReady = await waitForLivenessList(
+        page,
+        env,
+        "High priority"
+    );
+
+    /* if (highReady) {
     	console.log(`[${env.label}] High priority list ready`);
 	} */
-	
+
     let rows = [];
 
     rows = rows.concat(await extractLivenessRows(page, "Prioridad Alta"));
 
     const lowPriorityTab = page.getByText(
-        "Prioridad baja",
-        { exact: true }
+        "Prioridad baja", {
+            exact: true
+        }
     );
 
     const hasLowPriorityTab = await lowPriorityTab
@@ -147,17 +164,19 @@ async function monitorLiveness(page, env) {
     if (hasLowPriorityTab) {
         console.log(`[${env.label}] Clicking low priority tab`);
 
-      	try {
-    		const lowListPromise = waitForLivenessList(page, env, "Low priority");
+        try {
+            const lowListPromise = waitForLivenessList(page, env, "Low priority");
 
-    		await lowPriorityTab.click({ timeout: 3000 });
-    		console.log(`[${env.label}] Low priority tab clicked`);
+            await lowPriorityTab.click({
+                timeout: 3000
+            });
+            console.log(`[${env.label}] Low priority tab clicked`);
 
-    		await lowListPromise;
-		} catch (err) {
-    		console.warn(`[${env.label}] Low priority tab failed: ${err.message}`);
-    		// Continue monitoring instead of restarting the whole browser
-			}
+            await lowListPromise;
+        } catch (err) {
+            console.warn(`[${env.label}] Low priority tab failed: ${err.message}`);
+            // Continue monitoring instead of restarting the whole browser
+        }
 
         rows = rows.concat(
             await extractLivenessRows(

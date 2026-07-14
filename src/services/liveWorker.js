@@ -20,7 +20,7 @@ const LIVE_LOOP_DELAY_MS = Number(
 );
 
 const LIVE_CHECK_TIMEOUT_MS = Number(
-    process.env.LIVE_CHECK_TIMEOUT_MS || 30000
+    process.env.LIVE_CHECK_TIMEOUT_MS || 60000
 );
 
 function sleep(ms) {
@@ -45,7 +45,7 @@ function withTimeout(promise, ms, label) {
 async function startLiveWorker(deps) {
 
 	console.log("[LIVE] Persistent browser mode enabled");
-    console.log("[LIVE] Worker initialized");
+    //console.log("[LIVE] Worker initialized");
     
     const {
         getActiveWindowConfig,
@@ -155,15 +155,32 @@ async function startLiveLoop(options) {
             }
 
             const startedAt = Date.now();
-
-            for (const resource of resources) {
-                await runEnvironmentLivePass({
-                    ...resource,
-                    formatKeynuaTime,
-                    sendPushover
-                });
+            
+            let authRecovered = false;
+            
+            try{
+            	for (const resource of resources) {
+                	await runEnvironmentLivePass({
+                   		...resource,
+                    	formatKeynuaTime,
+                    	sendPushover
+                	});
+            	}
+            } catch (error){
+            	if(error.code === "AUTH_RECOVERED") {
+            		authRecovered = true;
+            		
+            		console.log(`[LIVE] ${error.message}`);
+            		console.log("[LIVE] Authentication recovery completed. " + "Deferring monitoring until the next pass.");
+            	} else { 
+            		throw error;
+            	}
             }
-
+            if (authRecovered) { 
+            	await sleep(LIVE_LOOP_DELAY_MS);
+            	continue;
+            }
+            
             const duration = ((Date.now() - startedAt) / 1000).toFixed(1);
 
             console.log(`[LIVE] Full pass completed in ${duration}s`);
