@@ -204,6 +204,19 @@ async function ensureLoggedIn(page, context, env) {
 
     console.log(`[${env.label}] Session expired. Logging in again...`);
 
+	console.log(`[${env.label}] Login URL: ${page.url()}`);
+
+	const bodyText = await page
+    	.locator("body")
+    	.innerText()
+    	.catch(() => "");
+
+	console.log(
+    	`[${env.label}] Login page preview: ${JSON.stringify(
+        bodyText.slice(0, 1000)
+    	)}`
+	);
+	
     await page.waitForSelector('input[placeholder="Email address"]', {
         timeout: 15000
     });
