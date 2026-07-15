@@ -110,6 +110,70 @@ async function ensureLoggedIn(page, context, env) {
         return "unknown";
     };
 
+    const waitForLoginForm = async () => {
+        const emailSelector = 'input[placeholder="Email address"]';
+        const passwordSelector = 'input[placeholder="Password"]';
+
+        const isFormVisible = async () => {
+            const emailVisible = await page
+                .locator(emailSelector)
+                .first()
+                .isVisible()
+                .catch(() => false);
+
+            const passwordVisible = await page
+                .locator(passwordSelector)
+                .first()
+                .isVisible()
+                .catch(() => false);
+
+            return emailVisible && passwordVisible;
+        };
+
+        if (await isFormVisible()) {
+            return true;
+        }
+
+        const firstBodyText = await page
+            .locator("body")
+            .innerText()
+            .catch(() => "");
+
+        if (!firstBodyText.trim()) {
+            console.log(
+                `[${env.label}] Login page body is empty. Reloading login route once.`
+            );
+
+            await page.goto(`${env.baseUrl}/auth/login/`, {
+                waitUntil: "domcontentloaded",
+                timeout: 30000
+            });
+        }
+
+        try {
+            await page.waitForFunction(
+                () => {
+                    const email = document.querySelector(
+                        'input[placeholder="Email address"]'
+                    );
+
+                    const password = document.querySelector(
+                        'input[placeholder="Password"]'
+                    );
+
+                    return Boolean(email && password);
+                },
+                null, {
+                    timeout: 15000
+                }
+            );
+
+            return true;
+        } catch {
+            return false;
+        }
+    };
+
     const recoverUnknownAuthState = async (targetUrl) => {
         console.warn(
             `[${env.label}] Auth state unknown. Reloading current page once. Current URL: ${page.url()}`
@@ -141,7 +205,7 @@ async function ensureLoggedIn(page, context, env) {
 
         await context.clearCookies().catch(() => {});
 
-        await page.goto(`${env.baseUrl}/auth/login`, {
+        await page.goto(`${env.baseUrl}/auth/login/`, {
             waitUntil: "domcontentloaded",
             timeout: 30000
         });
@@ -151,9 +215,12 @@ async function ensureLoggedIn(page, context, env) {
         console.log(`[${env.label}] Auth state after forced login navigation: ${forcedLoginState}`);
 
         if (forcedLoginState !== "login") {
-            throw new Error(
+            const error = new Error(
                 `[${env.label}] Could not recover unknown auth state. Current URL: ${page.url()}`
             );
+
+            error.code = "AUTH_RECOVERY_FAILED";
+            throw error;
         }
 
         return "login";
@@ -181,10 +248,10 @@ async function ensureLoggedIn(page, context, env) {
         authState = await recoverUnknownAuthState(targetUrl);
 
         if (authState === "app") {
-        	console.log(
-            `[${env.label}] Auth state recovered. Deferring monitoring until the next pass.`
-        	);
-        	
+            console.log(
+                `[${env.label}] Auth state recovered. Deferring monitoring until the next pass.`
+            );
+
             return true;
         }
     }
@@ -196,7 +263,7 @@ async function ensureLoggedIn(page, context, env) {
 
         await context.clearCookies().catch(() => {});
 
-        await page.goto(`${env.baseUrl}/auth/login`, {
+        await page.goto(`${env.baseUrl}/auth/login/`, {
             waitUntil: "domcontentloaded",
             timeout: 30000
         });
@@ -204,26 +271,42 @@ async function ensureLoggedIn(page, context, env) {
 
     console.log(`[${env.label}] Session expired. Logging in again...`);
 
-	console.log(`[${env.label}] Login URL: ${page.url()}`);
+    console.log(`[${env.label}] Login URL: ${page.url()}`);
 
-	const bodyText = await page
-    	.locator("body")
-    	.innerText()
-    	.catch(() => "");
+    const bodyText = await page
+        .locator("body")
+        .innerText()
+        .catch(() => "");
 
-	console.log(
-    	`[${env.label}] Login page preview: ${JSON.stringify(
+    console.log(
+        `[${env.label}] Login page preview: ${JSON.stringify(
         bodyText.slice(0, 1000)
     	)}`
-	);
-	
-    await page.waitForSelector('input[placeholder="Email address"]', {
-        timeout: 15000
-    });
+    );
+    
+    console.log(`[${env.label}] Body HTML length: ${ await page.locator("body").evaluate(el => el.innerHTML.length)}`);
+    
+    console.log(`[${env.label}] Document readyState: ${ await page.evaluate(() => document.readyState)}`);
 
-    await page.waitForSelector('input[placeholder="Password"]', {
-        timeout: 15000
-    });
+    /*    await page.waitForSelector('input[placeholder="Email address"]', {
+           timeout: 15000
+       });
+
+       await page.waitForSelector('input[placeholder="Password"]', {
+           timeout: 15000
+       }); */
+
+    const loginFormReady = await waitForLoginForm();
+
+    if (!loginFormReady) {
+        const error = new Error(
+            `[${env.label}] Login route loaded, but the login form did not render. ` +
+            `Current URL: ${page.url()}`
+        );
+
+        error.code = "AUTH_RECOVERY_FAILED";
+        throw error;
+    }
 
     await page.fill(
         'input[placeholder="Email address"]',
@@ -250,10 +333,13 @@ async function ensureLoggedIn(page, context, env) {
     const postLoginState = await waitForAuthStateToSettle();
 
     if (postLoginState !== "app") {
-        throw new Error(
+        const error = new Error(
             `[${env.label}] Login did not reach a valid app state. ` +
             `Detected state: ${postLoginState}. Current URL: ${page.url()}`
         );
+
+        error.code = "AUTH_RECOVERY_FAILED";
+        throw error;
     }
 
     console.log(
@@ -268,10 +354,13 @@ async function ensureLoggedIn(page, context, env) {
     const finalState = await waitForAuthStateToSettle();
 
     if (finalState !== "app") {
-        throw new Error(
+        const error = new Error(
             `[${env.label}] Session was not restored after returning to the target page. ` +
             `Detected state: ${finalState}. Current URL: ${page.url()}`
         );
+
+        error.code = "AUTH_RECOVERY_FAILED";
+        throw error;
     }
 
     await context.storageState({

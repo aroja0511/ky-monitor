@@ -53,7 +53,7 @@ async function monitorTranscribe(page, env) {
 
     if (authRecovered) {
         const error = new Error(
-            `[${env.label}] Authentication recovered during Transcribe. Deferring monitoring to the next pass.`
+            `[${env.label}] Authentication recovered during Transcribe. ` + "Deferring monitoring to the next pass."
         );
 
         error.code = "AUTH_RECOVERED";
@@ -74,7 +74,7 @@ async function monitorTranscribe(page, env) {
         const text = document.body.innerText || "";
 
         const hasRow =
-    		/[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}:\d+:\d+/i.test(text) ||
+    		/[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12,16}:\d+:\d+/i.test(text) ||
     		/\d{2}\/\d{2}\/\d{4}\s\d{2}:\d{2}:\d{2}/.test(text);
 
         const isEmpty =
@@ -98,7 +98,7 @@ async function monitorTranscribe(page, env) {
     debug(env, `page text extracted in ${Date.now() - extractStartedAt}ms | length=${pageText.length}`);
 
     const itemIdMatches = pageText.match(
-        /[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}:\d+:\d+/gi
+        /[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12,16}:\d+:\d+/gi
     ) || [];
 
     const dateMatches = pageText.match(

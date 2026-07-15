@@ -110,7 +110,7 @@ async function monitorLiveness(page, env) {
 
     if (authRecovered) {
         const error = new Error(
-            `[${env.label}] Authentication recovered during Liveness. Deferring monitoring to the next pass.`
+            `[${env.label}] Authentication recovered during Liveness. ` + "Deferring monitoring to the next pass."
         );
 
         error.code = "AUTH_RECOVERED";

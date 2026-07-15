@@ -44,9 +44,9 @@ function withTimeout(promise, ms, label) {
 
 async function startLiveWorker(deps) {
 
-	console.log("[LIVE] Persistent browser mode enabled");
+    console.log("[LIVE] Persistent browser mode enabled");
     //console.log("[LIVE] Worker initialized");
-    
+
     const {
         getActiveWindowConfig,
         maybeSendWindowEvent,
@@ -143,7 +143,7 @@ async function startLiveLoop(options) {
 
             console.log(`[LIVE] ${env.label} session ready`);
         }
-        
+
         console.log("[LIVE] All environments initialized. Entering monitoring loop...");
 
         while (true) {
@@ -155,32 +155,44 @@ async function startLiveLoop(options) {
             }
 
             const startedAt = Date.now();
-            
-            let authRecovered = false;
-            
-            try{
-            	for (const resource of resources) {
-                	await runEnvironmentLivePass({
-                   		...resource,
-                    	formatKeynuaTime,
-                    	sendPushover
-                	});
-            	}
-            } catch (error){
-            	if(error.code === "AUTH_RECOVERED") {
-            		authRecovered = true;
-            		
-            		console.log(`[LIVE] ${error.message}`);
-            		console.log("[LIVE] Authentication recovery completed. " + "Deferring monitoring until the next pass.");
-            	} else { 
-            		throw error;
-            	}
+
+            let retryAuthenticationNextPass = false;
+
+            try {
+                for (const resource of resources) {
+                    await runEnvironmentLivePass({
+                        ...resource,
+                        formatKeynuaTime,
+                        sendPushover
+                    });
+                }
+            } catch (error) {
+                if (error.code === "AUTH_RECOVERED") {
+                    retryAuthenticationNextPass = true;
+
+                    console.log(`[LIVE] ${error.message}`);
+                    console.log(
+                        "[LIVE] Authentication recovery completed. " +
+                        "Deferring monitoring until the next pass."
+                    );
+                } else if (error.code === "AUTH_RECOVERY_FAILED") {
+                    retryAuthenticationNextPass = true;
+
+                    console.log(`[LIVE] ${error.message}`);
+                    console.log(
+                        "[LIVE] Authentication recovery could not be completed. " +
+                        "Retrying on the next pass without restarting the service."
+                    );
+                } else {
+                    throw error;
+                }
             }
-            if (authRecovered) { 
-            	await sleep(LIVE_LOOP_DELAY_MS);
-            	continue;
+
+            if (retryAuthenticationNextPass) {
+                await sleep(LIVE_LOOP_DELAY_MS);
+                continue;
             }
-            
+
             const duration = ((Date.now() - startedAt) / 1000).toFixed(1);
 
             console.log(`[LIVE] Full pass completed in ${duration}s`);
