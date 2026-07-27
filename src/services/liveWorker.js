@@ -50,6 +50,7 @@ async function startLiveWorker(deps) {
     const {
         getActiveWindowConfig,
         maybeSendWindowEvent,
+        sendFlatline,
         formatKeynuaTime,
         sendPushover
     } = deps;
@@ -75,6 +76,7 @@ async function startLiveWorker(deps) {
             activeWindow,
             getActiveWindowConfig,
             maybeSendWindowEvent,
+            sendFlatline,
             formatKeynuaTime,
             sendPushover,
             onStop: () => {
@@ -98,11 +100,13 @@ async function startLiveLoop(options) {
         activeWindow,
         getActiveWindowConfig,
         maybeSendWindowEvent,
+        sendFlatline,
         formatKeynuaTime,
         sendPushover,
         onStop
     } = options;
-
+	
+	let windowEndedNormally = false;
     let browser = null;
     const resources = [];
 
@@ -151,12 +155,13 @@ async function startLiveLoop(options) {
 
             if (!currentWindow) {
                 console.log("[LIVE] Active window ended. Stopping live loop.");
+                windowEndedNormally = true;
                 break;
             }
 
             const startedAt = Date.now();
 
-            let retryAuthenticationNextPass = false;
+            let retryNextPass = false;
 
             try {
                 for (const resource of resources) {
@@ -168,7 +173,7 @@ async function startLiveLoop(options) {
                 }
             } catch (error) {
                 if (error.code === "AUTH_RECOVERED") {
-                    retryAuthenticationNextPass = true;
+                    retryNextPass = true;
 
                     console.log(`[LIVE] ${error.message}`);
                     console.log(
@@ -176,19 +181,25 @@ async function startLiveLoop(options) {
                         "Deferring monitoring until the next pass."
                     );
                 } else if (error.code === "AUTH_RECOVERY_FAILED") {
-                    retryAuthenticationNextPass = true;
+                    retryNextPass = true;
 
                     console.log(`[LIVE] ${error.message}`);
                     console.log(
                         "[LIVE] Authentication recovery could not be completed. " +
                         "Retrying on the next pass without restarting the service."
                     );
+                } else if (error.code === "MONITOR_NAVIGATION_FAILED") {
+					retryNextPass = true;
+					
+					console.log(`[LIVE] ${error.message}`);
+					console.log("[LIVE] Page navigation failed temporarily. " + " Retrying on the next pass without restarting the service.");
+                
                 } else {
                     throw error;
                 }
             }
 
-            if (retryAuthenticationNextPass) {
+            if (retryNextPass) {
                 await sleep(LIVE_LOOP_DELAY_MS);
                 continue;
             }
@@ -209,10 +220,19 @@ async function startLiveLoop(options) {
             await browser.close().catch(() => {});
         }
 
-        await maybeSendWindowEvent("flatline", activeWindow);
-
-        if (onStop) {
-            onStop();
+        //await maybeSendWindowEvent("flatline", activeWindow);
+        try {
+        	if (windowEndedNormally) {
+    			await sendFlatline(activeWindow.window);
+    			
+    			console.log(`[LIVE] Flatline sent for ${activeWindow.window} window`);
+			}
+		} catch (error) {
+				console.log(`[LIVE] Failed to send flatline: ${error.message}`);
+		} finally {	
+        	if (onStop) {
+            	onStop();
+        	}
         }
 
         console.log("[LIVE] Browser closed. Live loop stopped.");

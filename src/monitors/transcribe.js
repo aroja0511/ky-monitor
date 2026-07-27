@@ -32,11 +32,23 @@ async function monitorTranscribe(page, env) {
     debug(env, "goto started");
 
     const gotoStartedAt = Date.now();
-
-    await page.goto(`${env.baseUrl}/transcribe/`, {
-        waitUntil: "domcontentloaded",
-        timeout: 30000
-    });
+	
+	try {
+	
+    	await page.goto(`${env.baseUrl}/transcribe/`, {
+        	waitUntil: "domcontentloaded",
+        	timeout: 30000
+    	});
+    } catch (error) {
+    	if (error.name === "TimeoutError") {
+    		const navigationError = new Error(`[${env.label}] Transcribe navigation timed out. Retrying on the next pass.`);
+    		
+    		navigationError.code = "MONITOR_NAVIGATION_FAILED";
+			throw navigationError;
+    	}
+    	
+    	throw error;
+    }
 
     debug(env, `goto completed in ${Date.now() - gotoStartedAt}ms | URL: ${page.url()}`);
 
@@ -86,7 +98,7 @@ async function monitorTranscribe(page, env) {
     }).then(() => {
         debug(env, `readiness completed in ${Date.now() - readinessStartedAt}ms`);
     }).catch(() => {
-        console.log(`[TRANSCRIBE] [${env.label}] Readiness not confirmed after ` + `{Date.now() - readinessStartedAt}ms. Continuing with current page content.`);
+        console.log(`[TRANSCRIBE] [${env.label}] Readiness not confirmed after ` + `${Date.now() - readinessStartedAt}ms. Continuing with current page content.`);
     });
 
     const extractStartedAt = Date.now();

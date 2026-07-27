@@ -32,12 +32,24 @@ async function monitorFraud(page, env) {
     debug(env, "goto started");
 
     const gotoStartedAt = Date.now();
-
-    await page.goto(`${env.baseUrl}/fraud-detection/`, {
-        waitUntil: "domcontentloaded",
-        timeout: 30000
-    });
-
+	
+	try {
+	   	await page.goto(`${env.baseUrl}/fraud-detection/`, {
+        	waitUntil: "domcontentloaded",
+        	timeout: 30000
+    	});
+    } catch (error) {
+    	if (error.name === "TimeoutError") {
+    		const navigationError = new Error(`[${env.label}] Fraud navigation timed out. Retrying on the next pass.`);
+    		
+    		navigationError.code = "MONITOR_NAVIGATION_FAILED";
+    		throw navigationError;
+    	}
+    	
+    	throw error;
+    	
+    }
+    
     debug(env, `goto completed in ${Date.now() - gotoStartedAt}ms | URL: ${page.url()}`);
 
     const authStartedAt = Date.now();

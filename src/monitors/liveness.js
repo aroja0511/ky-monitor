@@ -96,10 +96,22 @@ async function monitorLiveness(page, env) {
         });
     }
 
-    await page.goto(`${env.baseUrl}/liveness-detection-approval/`, {
-        waitUntil: "domcontentloaded",
-        timeout: 30000
-    });
+    try {
+    	await page.goto(`${env.baseUrl}/liveness-detection-approval/`, {
+        	waitUntil: "domcontentloaded",
+        	timeout: 30000
+    	});
+    } catch (error) {
+    	if (error.name === "TimeoutError") {
+    		const navigationError = new Error(`[${env.label}] Liveness navigation timed out. Retrying on the next pass.`);
+    		
+    		navigationError.code = "MONITOR_NAVIGATION_FAILED";
+    		throw navigationError;
+    	}
+    	
+    	throw error;
+    	   	
+    }
 
     //await ensureLoggedIn(page, page.context(), env);
     const authRecovered = await ensureLoggedIn(
