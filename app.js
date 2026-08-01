@@ -104,14 +104,20 @@ const DEFAULT_WINDOWS = {
 
 function readScheduleConfig() {
     try {
+   		if (!fs.existsSync(SCHEDULE_FILE)) {
+   			return [];
+   		} 
+   
         const today = getMadridParts().date;
-
-        const overrides = JSON.parse(
-            fs.readFileSync(SCHEDULE_FILE, "utf8")
-        );
+		const raw = fs.readFileSync(SCHEDULE_FILE,"utf8");
+        const overrides = JSON.parse(raw);
+        
+        if (!Array.isArray(overrides)) {
+        	throw new Error("Schedule configuration must contain an Array");
+        }
 
         const activeOverrides = overrides.filter(
-            x => x.endDate >= today
+            override => override.endDate >= today
         );
 
         if (activeOverrides.length !== overrides.length) {
@@ -124,20 +130,31 @@ function readScheduleConfig() {
 
         return activeOverrides;
 
-    } catch {
+    } catch (error){
+    	console.error(`[SCHEDULE] Failed to read schedule configuration: ${error.message}`);
+    	
         return [];
     }
 }
 
 function saveScheduleConfig(data) {
+	if (!Array.isArray(data)) {
+		throw new Error("Schedule configuration. must contain an array");
+	}
+	
     fs.mkdirSync(path.dirname(SCHEDULE_FILE), {
         recursive: true
     });
+    
+    const temporaryFile = `${SCHEDULE_FILE}.tmp`;
 
     fs.writeFileSync(
-        SCHEDULE_FILE,
-        JSON.stringify(data, null, 2)
+        temporaryFile,
+        JSON.stringify(data, null, 2),
+        "utf8"
     );
+    
+    fs.renameSync(temporaryFile,SCHEDULE_FILE);
 }
 
 function parseRequestBody(req) {
