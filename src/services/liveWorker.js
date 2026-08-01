@@ -23,6 +23,9 @@ const LIVE_CHECK_TIMEOUT_MS = Number(
     process.env.LIVE_CHECK_TIMEOUT_MS || 60000
 );
 
+const PARALLEL_ENV_MONITOR = process.env.PARALLEL_ENV_MONITOR === "true";
+
+
 function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
@@ -46,6 +49,8 @@ async function startLiveWorker(deps) {
 
     console.log("[LIVE] Persistent browser mode enabled");
     //console.log("[LIVE] Worker initialized");
+    
+    console.log(`[LIVE] Environment execution mode ${PARALLEL_ENV_MONITOR ? "parallel" : "sequential"}`);
 
     const {
         getActiveWindowConfig,
@@ -164,13 +169,11 @@ async function startLiveLoop(options) {
             let retryNextPass = false;
 
             try {
-                for (const resource of resources) {
-                    await runEnvironmentLivePass({
-                        ...resource,
+                    await runEnvironmentPasses(
+                        resources,
                         formatKeynuaTime,
                         sendPushover
-                    });
-                }
+                    );
             } catch (error) {
                 if (error.code === "AUTH_RECOVERED") {
                     retryNextPass = true;
@@ -237,6 +240,90 @@ async function startLiveLoop(options) {
 
         console.log("[LIVE] Browser closed. Live loop stopped.");
     }
+}
+
+async function runEnvironmentPasses(
+    resources,
+    formatKeynuaTime,
+    sendPushover
+) {
+    if (!PARALLEL_ENV_MONITOR) {
+        for (const resource of resources) {
+            await runEnvironmentLivePass({
+                ...resource,
+                formatKeynuaTime,
+                sendPushover
+            });
+        }
+
+        return;
+    }
+
+    const results = await Promise.allSettled(
+        resources.map(resource =>
+            runEnvironmentLivePass({
+                ...resource,
+                formatKeynuaTime,
+                sendPushover
+            })
+        )
+    );
+
+    const failures = results
+        .map((result, index) => ({
+            result,
+            resource: resources[index]
+        }))
+        .filter(({ result }) => result.status === "rejected");
+
+    if (failures.length === 0) {
+        return;
+    }
+
+    for (const failure of failures) {
+        const error = failure.result.reason;
+        const label = failure.resource.env.label;
+
+        console.error(
+            `[LIVE] [${label}] Parallel pass failed:`,
+            error
+        );
+    }
+
+    /*
+     * Preserve the same recovery behavior used by the live loop.
+     * Priority:
+     * 1. AUTH_RECOVERY_FAILED
+     * 2. AUTH_RECOVERED
+     * 3. MONITOR_NAVIGATION_FAILED
+     * 4. Any unexpected error
+     */
+     
+    const recoverableCodes = new Set(["AUTH_RECOVERY_FAILED","AUTH_RECOVERED","MONITOR_NAVIGATION_FAILED"]);
+    
+    const unexpectedFailure = failures.find(({ result }) => !recoverableCodes.has(result.reason?.code));
+    
+    if (unexpectedFailure) {
+    	throw unexpectedFailure.result.reason;
+    }
+    
+    const prioritizedCodes = [
+        "AUTH_RECOVERY_FAILED",
+        "AUTH_RECOVERED",
+        "MONITOR_NAVIGATION_FAILED"
+    ];
+
+    for (const code of prioritizedCodes) {
+        const matchingFailure = failures.find(
+            ({ result }) => result.reason?.code === code
+        );
+
+        if (matchingFailure) {
+            throw matchingFailure.result.reason;
+        }
+    }
+
+    throw failures[0].result.reason;
 }
 
 async function runEnvironmentLivePass(options) {
