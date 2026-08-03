@@ -36,13 +36,11 @@ function saveSeen(env, data) {
     );
 }
 
-/*
- * Waits for the Liveness list API response.
- *
- * This is only a readiness signal. If the response is not observed,
- * monitoring continues using the current page content.
- */
-async function waitForLivenessList(page, env, label) {
+async function waitForLivenessList(
+    page,
+    env,
+    label
+) {
     try {
         await page.waitForResponse(
             response =>
@@ -63,10 +61,6 @@ async function waitForLivenessList(page, env, label) {
 
         return true;
     } catch {
-        /*
-         * This is an expected fallback, not a monitor failure.
-         * Use console.log so Railway does not classify it as an error.
-         */
         console.warn(
             `[${env.label}] ${label} liveness list response not observed. ` +
             "Continuing with page content."
@@ -76,52 +70,48 @@ async function waitForLivenessList(page, env, label) {
     }
 }
 
-/*
- * Provides a secondary readiness check based on the rendered page.
- *
- * This covers situations where:
- * - the network response completed before Playwright observed it
- * - the response was served from cache
- * - the SPA updated the page without producing the expected response event
- */
 async function waitForLivenessContent(
     page,
     env,
     label
 ) {
     try {
-        await page.waitForFunction(() => {
-            const text =
-                document.body?.innerText || "";
+        await page.waitForFunction(
+            () => {
+                const text =
+                    document.body?.innerText || "";
 
-            const hasRequestRow =
-                /[a-f0-9-]+:item:\d+:\d+/i.test(
-                    text
+                const hasRequestRow =
+                    /[a-f0-9-]+:item:\d+:\d+/i.test(
+                        text
+                    );
+
+                const hasRequestDate =
+                    /\d{2}\/\d{2}\/\d{4}\s\d{2}:\d{2}:\d{2}/.test(
+                        text
+                    );
+
+                const hasEmptyState =
+                    /there are no pending/i.test(text) ||
+                    /no pending liveness/i.test(text) ||
+                    /no liveness requests/i.test(text) ||
+                    /no requests/i.test(text);
+
+                return (
+                    hasRequestRow ||
+                    hasRequestDate ||
+                    hasEmptyState
                 );
-
-            const hasRequestDate =
-                /\d{2}\/\d{2}\/\d{4}\s\d{2}:\d{2}:\d{2}/.test(
-                    text
-                );
-
-            const hasEmptyState =
-                /there are no pending/i.test(text) ||
-                /no pending liveness/i.test(text) ||
-                /no liveness requests/i.test(text) ||
-                /no requests/i.test(text);
-
-            return (
-                hasRequestRow ||
-                hasRequestDate ||
-                hasEmptyState
-            );
-        }, {
-            timeout: 3000
-        });
+            },
+            null,
+            {
+                timeout: 3000
+            }
+        );
 
         return true;
     } catch {
-        console.log(
+        console.warn(
             `[${env.label}] ${label} DOM readiness not confirmed. ` +
             "Continuing with current page content."
         );
@@ -198,10 +188,6 @@ async function extractLivenessRows(
 }
 
 async function monitorLiveness(page, env) {
-    /*
-     * Avoid attaching a new response listener on every live pass.
-     * This only applies when DEBUG_LIVENESS is enabled.
-     */
     if (
         DEBUG_LIVENESS &&
         !page.__livenessDebugListenerAttached
@@ -228,11 +214,8 @@ async function monitorLiveness(page, env) {
     }
 
     /*
-     * Start listening before navigation.
-     *
-     * The High Priority list loads automatically when the
-     * Liveness page opens, so waiting after page.goto() can
-     * miss the response.
+     * High Priority loads automatically when the page opens,
+     * so start listening before navigation.
      */
     const highListPromise =
         waitForLivenessList(
@@ -288,17 +271,20 @@ async function monitorLiveness(page, env) {
         );
     }
 
-    /*
-     * Complete both readiness checks before extracting
-     * the High Priority content.
-     */
-    await highListPromise;
+    const highListReady =
+        await highListPromise;
 
-    await waitForLivenessContent(
-        page,
-        env,
-        "High priority"
-    );
+    /*
+     * Only perform the DOM fallback when the network response
+     * was not observed.
+     */
+    if (!highListReady) {
+        await waitForLivenessContent(
+            page,
+            env,
+            "High priority"
+        );
+    }
 
     await debugLivenessPage(
         page,
@@ -334,8 +320,8 @@ async function monitorLiveness(page, env) {
 
         try {
             /*
-             * Start waiting before clicking because the click
-             * triggers the Low Priority list request.
+             * Start listening before clicking because the
+             * click triggers the Low Priority request.
              */
             const lowListPromise =
                 waitForLivenessList(
@@ -352,13 +338,16 @@ async function monitorLiveness(page, env) {
                 `[${env.label}] Low priority tab clicked`
             );
 
-            await lowListPromise;
+            const lowListReady =
+                await lowListPromise;
 
-            await waitForLivenessContent(
-                page,
-                env,
-                "Low priority"
-            );
+            if (!lowListReady) {
+                await waitForLivenessContent(
+                    page,
+                    env,
+                    "Low priority"
+                );
+            }
 
             await debugLivenessPage(
                 page,
@@ -369,11 +358,6 @@ async function monitorLiveness(page, env) {
             console.warn(
                 `[${env.label}] Low priority tab failed: ${error.message}`
             );
-
-            /*
-             * Continue with the available page content rather
-             * than restarting the persistent browser.
-             */
         }
 
         rows = rows.concat(
