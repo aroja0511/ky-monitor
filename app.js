@@ -93,12 +93,12 @@ const sendPushover = require("./src/services/pushover");
 
 const DEFAULT_WINDOWS = {
     morning: {
-        start: "07:00",
-        end: "09:01"
+        start: "06:00",
+        end: "08:01"
     },
     afternoon: {
-        start: "13:00",
-        end: "16:01"
+        start: "12:00",
+        end: "15:01"
     }
 };
 

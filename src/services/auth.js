@@ -13,7 +13,9 @@ async function ensureLoggedIn(page, context, env) {
             `${env.usernameEnv} and ${env.passwordEnv}`
         );
     }
-    const fallbackUrl = `${env.baseUrl}/liveness-detection-approval/`;
+
+    const fallbackUrl =
+        `${env.baseUrl}/liveness-detection-approval/`;
 
     const hasJwtExpiredMessage = async () => {
         const bodyText = await page
@@ -23,7 +25,9 @@ async function ensureLoggedIn(page, context, env) {
 
         return (
             /JwtTokenExpired/i.test(bodyText) ||
-            /credentials you provided are not valid/i.test(bodyText) ||
+            /credentials you provided are not valid/i.test(
+                bodyText
+            ) ||
             /unauthorized/i.test(bodyText)
         );
     };
@@ -43,13 +47,17 @@ async function ensureLoggedIn(page, context, env) {
         }
 
         const emailVisible = await page
-            .locator('input[placeholder="Email address"]')
+            .locator(
+                'input[placeholder="Email address"]'
+            )
             .first()
             .isVisible()
             .catch(() => false);
 
         const passwordVisible = await page
-            .locator('input[placeholder="Password"]')
+            .locator(
+                'input[placeholder="Password"]'
+            )
             .first()
             .isVisible()
             .catch(() => false);
@@ -111,8 +119,11 @@ async function ensureLoggedIn(page, context, env) {
     };
 
     const waitForLoginForm = async () => {
-        const emailSelector = 'input[placeholder="Email address"]';
-        const passwordSelector = 'input[placeholder="Password"]';
+        const emailSelector =
+            'input[placeholder="Email address"]';
+
+        const passwordSelector =
+            'input[placeholder="Password"]';
 
         const isFormVisible = async () => {
             const emailVisible = await page
@@ -141,29 +152,39 @@ async function ensureLoggedIn(page, context, env) {
 
         if (!firstBodyText.trim()) {
             console.log(
-                `[${env.label}] Login page body is empty. Reloading login route once.`
+                `[${env.label}] Login page body is empty. ` +
+                "Reloading login route once."
             );
 
-            await page.goto(`${env.baseUrl}/auth/login/`, {
-                waitUntil: "domcontentloaded",
-                timeout: 30000
-            });
+            await page.goto(
+                `${env.baseUrl}/auth/login/`,
+                {
+                    waitUntil: "domcontentloaded",
+                    timeout: 30000
+                }
+            );
         }
 
         try {
             await page.waitForFunction(
                 () => {
-                    const email = document.querySelector(
-                        'input[placeholder="Email address"]'
-                    );
+                    const email =
+                        document.querySelector(
+                            'input[placeholder="Email address"]'
+                        );
 
-                    const password = document.querySelector(
-                        'input[placeholder="Password"]'
-                    );
+                    const password =
+                        document.querySelector(
+                            'input[placeholder="Password"]'
+                        );
 
-                    return Boolean(email && password);
+                    return Boolean(
+                        email &&
+                        password
+                    );
                 },
-                null, {
+                null,
+                {
                     timeout: 15000
                 }
             );
@@ -174,82 +195,209 @@ async function ensureLoggedIn(page, context, env) {
         }
     };
 
-    const recoverUnknownAuthState = async (targetUrl) => {
-        console.warn(
-            `[${env.label}] Auth state unknown. Reloading current page once. Current URL: ${page.url()}`
-        );
+    const waitForLoginOrAuthenticatedState =
+        async () => {
+            const state =
+                await waitForAuthStateToSettle();
 
-        await page.reload({
-            waitUntil: "domcontentloaded",
-            timeout: 30000
-        }).catch(async () => {
-            console.warn(`[${env.label}] Reload failed. Navigating back to target URL.`);
+            if (
+                state === "login" ||
+                state === "app"
+            ) {
+                return state;
+            }
 
-            await page.goto(targetUrl, {
-                waitUntil: "domcontentloaded",
-                timeout: 30000
-            });
-        });
+            return "unknown";
+        };
 
-        const retryState = await waitForAuthStateToSettle();
-
-        console.log(`[${env.label}] Auth state after reload: ${retryState}`);
-
-        if (retryState === "app" || retryState === "login") {
-            return retryState;
-        }
-
-        console.warn(
-            `[${env.label}] Auth state still unknown after reload. Clearing cookies and forcing login.`
-        );
-
-        await context.clearCookies().catch(() => {});
-
-        await page.goto(`${env.baseUrl}/auth/login/`, {
-            waitUntil: "domcontentloaded",
-            timeout: 30000
-        });
-
-        const forcedLoginState = await waitForAuthStateToSettle();
-
-        console.log(`[${env.label}] Auth state after forced login navigation: ${forcedLoginState}`);
-
-        if (forcedLoginState !== "login") {
-            const error = new Error(
-                `[${env.label}] Could not recover unknown auth state. Current URL: ${page.url()}`
+    const recoverUnknownAuthState =
+        async targetUrl => {
+            console.warn(
+                `[${env.label}] Auth state unknown. ` +
+                "Reloading current page once. " +
+                `Current URL: ${page.url()}`
             );
 
-            error.code = "AUTH_RECOVERY_FAILED";
-            throw error;
-        }
+            await page
+                .reload({
+                    waitUntil: "domcontentloaded",
+                    timeout: 30000
+                })
+                .catch(async () => {
+                    console.warn(
+                        `[${env.label}] Reload failed. ` +
+                        "Navigating back to target URL."
+                    );
 
-        return "login";
-    };
+                    await page.goto(
+                        targetUrl,
+                        {
+                            waitUntil:
+                                "domcontentloaded",
+                            timeout: 30000
+                        }
+                    );
+                });
+
+            const retryState =
+                await waitForAuthStateToSettle();
+
+            console.log(
+                `[${env.label}] Auth state after reload: ` +
+                `${retryState}`
+            );
+
+            if (
+                retryState === "app" ||
+                retryState === "login"
+            ) {
+                return retryState;
+            }
+
+            console.warn(
+                `[${env.label}] Auth state still unknown ` +
+                "after reload. Clearing cookies and " +
+                "forcing login."
+            );
+
+            await context
+                .clearCookies()
+                .catch(() => {});
+
+            await page
+                .evaluate(() => {
+                    localStorage.clear();
+                    sessionStorage.clear();
+                })
+                .catch(() => {});
+
+            await page.goto(
+                `${env.baseUrl}/auth/login/`,
+                {
+                    waitUntil: "domcontentloaded",
+                    timeout: 30000
+                }
+            );
+
+            let forcedLoginState =
+                await waitForLoginOrAuthenticatedState();
+
+            console.log(
+                `[${env.label}] Auth state after forced ` +
+                `login navigation: ${forcedLoginState}`
+            );
+
+            if (forcedLoginState === "unknown") {
+                console.warn(
+                    `[${env.label}] Login or authenticated ` +
+                    "state did not render. Reloading login " +
+                    "route once."
+                );
+
+                await page.goto(
+                    `${env.baseUrl}/auth/login/`,
+                    {
+                        waitUntil:
+                            "domcontentloaded",
+                        timeout: 30000
+                    }
+                );
+
+                forcedLoginState =
+                    await waitForLoginOrAuthenticatedState();
+
+                console.log(
+                    `[${env.label}] Auth state after login ` +
+                    `route retry: ${forcedLoginState}`
+                );
+            }
+
+            if (forcedLoginState === "app") {
+                console.warn(
+                    `[${env.label}] Login route redirected ` +
+                    "to an authenticated page. " +
+                    `Current URL: ${page.url()}`
+                );
+
+                return "app";
+            }
+
+            if (forcedLoginState !== "login") {
+                const pageTitle = await page
+                    .title()
+                    .catch(() => "Unknown");
+
+                const recoveryBodyText =
+                    await page
+                        .locator("body")
+                        .innerText()
+                        .catch(() => "");
+
+                console.error(
+                    `[${env.label}] Authentication recovery ` +
+                    "state remained unknown. " +
+                    `URL: ${page.url()} | ` +
+                    `Title: ${pageTitle} | ` +
+                    "Body: " +
+                    `${JSON.stringify(
+                        recoveryBodyText.slice(
+                            0,
+                            500
+                        )
+                    )}`
+                );
+
+                const error = new Error(
+                    `[${env.label}] Neither the login form ` +
+                    "nor authenticated UI rendered. " +
+                    `Current URL: ${page.url()}`
+                );
+
+                error.code =
+                    "AUTH_RECOVERY_FAILED";
+
+                throw error;
+            }
+
+            return "login";
+        };
 
     const requestedUrl = page.url();
 
     const targetUrl =
         requestedUrl &&
         !requestedUrl.includes("about:blank") &&
-        !requestedUrl.includes("/auth/login") ?
-        requestedUrl :
-        fallbackUrl;
+        !requestedUrl.includes("/auth/login")
+            ? requestedUrl
+            : fallbackUrl;
 
-    let authState = await waitForAuthStateToSettle();
+    let authState =
+        await waitForAuthStateToSettle();
 
-    console.log(`[${env.label}] ensureLoggedIn URL: ${page.url()}`);
-    console.log(`[${env.label}] Auth state detected: ${authState}`);
+    console.log(
+        `[${env.label}] ensureLoggedIn URL: ` +
+        `${page.url()}`
+    );
+
+    console.log(
+        `[${env.label}] Auth state detected: ` +
+        `${authState}`
+    );
 
     if (authState === "app") {
         return false;
     }
 
     if (authState === "unknown") {
-        authState = await recoverUnknownAuthState(targetUrl);
+        authState =
+            await recoverUnknownAuthState(
+                targetUrl
+            );
 
         if (authState === "app") {
             console.log(
-                `[${env.label}] Auth state recovered. Deferring monitoring until the next pass.`
+                `[${env.label}] Auth state recovered. ` +
+                "Deferring monitoring until the next pass."
             );
 
             return true;
@@ -258,20 +406,43 @@ async function ensureLoggedIn(page, context, env) {
 
     if (await hasJwtExpiredMessage()) {
         console.warn(
-            `[${env.label}] JWT expired state detected. Clearing session before login.`
+            `[${env.label}] JWT expired state detected. ` +
+            "Clearing session before login."
         );
 
-        await context.clearCookies().catch(() => {});
+        await context
+            .clearCookies()
+            .catch(() => {});
 
-        await page.goto(`${env.baseUrl}/auth/login/`, {
-            waitUntil: "domcontentloaded",
-            timeout: 30000
-        });
+        /*
+         * JWT/session data may remain in browser storage
+         * after cookies are cleared, so clear both storage
+         * types before loading the login route.
+         */
+        await page
+            .evaluate(() => {
+                localStorage.clear();
+                sessionStorage.clear();
+            })
+            .catch(() => {});
+
+        await page.goto(
+            `${env.baseUrl}/auth/login/`,
+            {
+                waitUntil: "domcontentloaded",
+                timeout: 30000
+            }
+        );
     }
 
-    console.log(`[${env.label}] Session expired. Logging in again...`);
+    console.log(
+        `[${env.label}] Session expired. ` +
+        "Logging in again..."
+    );
 
-    console.log(`[${env.label}] Login URL: ${page.url()}`);
+    console.log(
+        `[${env.label}] Login URL: ${page.url()}`
+    );
 
     const bodyText = await page
         .locator("body")
@@ -279,32 +450,60 @@ async function ensureLoggedIn(page, context, env) {
         .catch(() => "");
 
     console.log(
-        `[${env.label}] Login page preview: ${JSON.stringify(
-        bodyText.slice(0, 1000)
-    	)}`
+        `[${env.label}] Login page preview: ` +
+        `${JSON.stringify(
+            bodyText.slice(0, 1000)
+        )}`
     );
-    
-    console.log(`[${env.label}] Body HTML length: ${ await page.locator("body").evaluate(el => el.innerHTML.length)}`);
-    
-    console.log(`[${env.label}] Document readyState: ${ await page.evaluate(() => document.readyState)}`);
 
-    /*    await page.waitForSelector('input[placeholder="Email address"]', {
-           timeout: 15000
-       });
+    console.log(
+        `[${env.label}] Body HTML length: ${
+            await page
+                .locator("body")
+                .evaluate(
+                    element =>
+                        element.innerHTML.length
+                )
+        }`
+    );
 
-       await page.waitForSelector('input[placeholder="Password"]', {
-           timeout: 15000
-       }); */
+    console.log(
+        `[${env.label}] Document readyState: ${
+            await page.evaluate(
+                () => document.readyState
+            )
+        }`
+    );
 
-    const loginFormReady = await waitForLoginForm();
+    /*
+    await page.waitForSelector(
+        'input[placeholder="Email address"]',
+        {
+            timeout: 15000
+        }
+    );
+
+    await page.waitForSelector(
+        'input[placeholder="Password"]',
+        {
+            timeout: 15000
+        }
+    );
+    */
+
+    const loginFormReady =
+        await waitForLoginForm();
 
     if (!loginFormReady) {
         const error = new Error(
-            `[${env.label}] Login route loaded, but the login form did not render. ` +
+            `[${env.label}] Login route loaded, ` +
+            "but the login form did not render. " +
             `Current URL: ${page.url()}`
         );
 
-        error.code = "AUTH_RECOVERY_FAILED";
+        error.code =
+            "AUTH_RECOVERY_FAILED";
+
         throw error;
     }
 
@@ -320,46 +519,66 @@ async function ensureLoggedIn(page, context, env) {
 
     await Promise.all([
         page
-        .waitForURL(
-            url => !url.toString().includes("/auth/login"), {
-                timeout: 30000
-            }
-        )
-        .catch(() => null),
+            .waitForURL(
+                url =>
+                    !url
+                        .toString()
+                        .includes("/auth/login"),
+                {
+                    timeout: 30000
+                }
+            )
+            .catch(() => null),
 
-        page.click('button:has-text("SIGN IN")')
+        page.click(
+            'button:has-text("SIGN IN")'
+        )
     ]);
 
-    const postLoginState = await waitForAuthStateToSettle();
+    const postLoginState =
+        await waitForAuthStateToSettle();
 
     if (postLoginState !== "app") {
         const error = new Error(
-            `[${env.label}] Login did not reach a valid app state. ` +
-            `Detected state: ${postLoginState}. Current URL: ${page.url()}`
+            `[${env.label}] Login did not reach ` +
+            "a valid app state. " +
+            `Detected state: ${postLoginState}. ` +
+            `Current URL: ${page.url()}`
         );
 
-        error.code = "AUTH_RECOVERY_FAILED";
+        error.code =
+            "AUTH_RECOVERY_FAILED";
+
         throw error;
     }
 
     console.log(
-        `[${env.label}] Login completed. Returning to target URL: ${targetUrl}`
+        `[${env.label}] Login completed. ` +
+        `Returning to target URL: ${targetUrl}`
     );
 
-    await page.goto(targetUrl, {
-        waitUntil: "domcontentloaded",
-        timeout: 30000
-    });
+    await page.goto(
+        targetUrl,
+        {
+            waitUntil: "domcontentloaded",
+            timeout: 30000
+        }
+    );
 
-    const finalState = await waitForAuthStateToSettle();
+    const finalState =
+        await waitForAuthStateToSettle();
 
     if (finalState !== "app") {
         const error = new Error(
-            `[${env.label}] Session was not restored after returning to the target page. ` +
-            `Detected state: ${finalState}. Current URL: ${page.url()}`
+            `[${env.label}] Session was not restored ` +
+            "after returning to the target page. " +
+            `Detected state: ${finalState}. ` +
+            `Current URL: ${page.url()}`
         );
 
-        error.code = "AUTH_RECOVERY_FAILED";
+        error.code =
+            "AUTH_RECOVERY_FAILED";
+
         throw error;
     }
 
@@ -367,7 +586,10 @@ async function ensureLoggedIn(page, context, env) {
         path: getSessionFile(env)
     });
 
-    console.log(`[${env.label}] Session refreshed.`);
+    console.log(
+        `[${env.label}] Session refreshed.`
+    );
+
     return true;
 }
 
